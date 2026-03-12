@@ -9,7 +9,7 @@ using System.Xml.Serialization;
 
 namespace MSFSSHTTP.Controllers
 {
-    [ServiceContract] 
+    [ServiceContract]
     public class FSSHTTPController : Controller
     {
         private readonly IWebHostEnvironment _env;
@@ -86,7 +86,8 @@ namespace MSFSSHTTP.Controllers
                 var requestId = Guid.NewGuid().ToString();
                 var uuid = Guid.NewGuid().ToString();
                 var boundary = $"uuid:{uuid}+id=1";
-                var xopContentId = $"http://tempuri.org/1/{DateTime.UtcNow.Ticks}";
+                string contentId = DateTime.UtcNow.Ticks.ToString();
+                var xopContentId = $"http://tempuri.org/1/{contentId}";
                 var xopHref = $"cid:{xopContentId}";
 
                 // Set multipart/related content type
@@ -140,6 +141,7 @@ namespace MSFSSHTTP.Controllers
                             var cellTokens = req.Body?.RequestCollection?.Request?
                                 .SelectMany(r => r.SubRequest ?? Array.Empty<SubRequestElementGenericType>())
                                 .Where(sr => sr.Type == SubRequestAttributeType.Cell)
+                                //.Where(sr => !string.IsNullOrWhiteSpace(sr.SubRequestData.PartitionID))
                                 .Select(sr => sr.SubRequestToken)
                                 .ToHashSet() ?? new HashSet<string>();
 
@@ -152,6 +154,7 @@ namespace MSFSSHTTP.Controllers
                                         continue;
                                     }
 
+                                    int index = 1;
                                     foreach (var subResponse in response.SubResponse)
                                     {
                                         if (subResponse?.SubResponseData == null || !cellTokens.Contains(subResponse.SubRequestToken))
@@ -165,7 +168,7 @@ namespace MSFSSHTTP.Controllers
                                         {
                                             subResponse.SubResponseData.Include = new Include
                                             {
-                                                href = xopHref
+                                                href = $"cid:http://tempuri.org/{index++}/{contentId}"
                                             };
                                         }
                                     }

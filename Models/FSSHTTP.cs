@@ -394,6 +394,8 @@
         ColdStoreConcurrencyViolation,
         HighLevelExceptionThrown,
         Unknown,
+        FeatureDisabledOnServerTenantNotSupported,
+        DependentOnlyOnNotSupportedRequestGetSupported
     }
 
     /// <summary>
@@ -438,7 +440,7 @@
     /// </summary>
     public class Response
     {
-        [XmlElement()]
+        [XmlElement(ElementName = "SubResponse", Namespace = "http://schemas.microsoft.com/sharepoint/soap/")]
         public SubResponseElementGenericType[] SubResponse { get; set; }
 
         [XmlTextAttribute()]
@@ -473,6 +475,18 @@
 
         [XmlAttribute(DataType = "nonNegativeInteger")]
         public string IntervalOverride { get; set; }
+
+        public int RequestedClientImpact { get; set; }
+
+        [XmlAttribute]
+        public bool ExpectedAccessRead { get; set; }
+        [XmlAttribute]
+        public bool ExpectedAccessWrite { get; set; }
+        [XmlAttribute]
+        public bool ExpectedAccessReviewWrite { get; set; }
+
+        [XmlAttribute]
+        public string TenantId { get; set; }
     }
 
     /// <summary>
@@ -556,7 +570,7 @@
         [XmlAttribute(DataType = "integer")]
         public string LastModifiedTime { get; set; }
 
-        [XmlAttribute(DataType = "NCName")]
+        [XmlAttribute]
         public string ModifiedBy { get; set; }
 
         [XmlAttribute()]
@@ -570,6 +584,9 @@
 
         [XmlAttribute()]
         public string HaveOnlyDemotionChanges { get; set; }
+
+        [XmlAttribute()]
+        public string IsHybridCobalt { get; set; }
         #endregion
         #endregion
 

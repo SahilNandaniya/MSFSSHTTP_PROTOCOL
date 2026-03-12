@@ -5,6 +5,7 @@ namespace MSFSSHTTP.Services
 {
     public class MSFSSHTTPService : IMSFSSHTTPService
     {
+        public string SchemaLockId { get; set; }
         public Task<ResponseEnvelope> CellStorageRequestNew(RequestEnvelope request, string filePath)
         {
             var requestCollection = request.Body?.RequestCollection;
@@ -31,10 +32,16 @@ namespace MSFSSHTTP.Services
                 responses.Add(new Response
                 {
                     Url = req.Url,
+                    UrlIsEncoded = "False",
                     RequestToken = req.RequestToken,
                     HealthScore = "0",
+                    RequestedClientImpact = 3,
+                    IntervalOverride = "0",
+                    ExpectedAccessRead = true,
+                    ExpectedAccessWrite = false,
+                    ResourceID = Guid.NewGuid().ToString(),
                     ErrorCode = GenericErrorCodeTypes.Success,
-                    ErrorCodeSpecified = true,
+                    ErrorCodeSpecified = false,
                     SubResponse = subResponses.ToArray()
                 });
             }
@@ -64,6 +71,7 @@ namespace MSFSSHTTP.Services
             switch (subReq.Type)
             {
                 case SubRequestAttributeType.Coauth:
+                    SchemaLockId = subReq.SubRequestData.SchemaLockID;
                     return BuildCoAuthResponse(subReq);
 
                 case SubRequestAttributeType.ExclusiveLock:
@@ -92,9 +100,37 @@ namespace MSFSSHTTP.Services
                 case SubRequestAttributeType.GetDocMetaInfo:
                     return BuildGetDocMetaInfoResponse(subReq, filePath);
 
+                case SubRequestAttributeType.Label:
+                    return BuildFeatureDisabledOnServerTenantNotSupportedResponse(subReq.SubRequestToken);
+
+                case SubRequestAttributeType.SchemaLock:
+                    return BuildDependentOnlyOnNotSupportedRequestGetSupported(subReq.SubRequestToken);
+
                 default:
                     return BuildNotSupportedResponse(subReq.SubRequestToken);
             }
+        }
+
+        private SubResponseElementGenericType BuildDependentOnlyOnNotSupportedRequestGetSupported(string subRequestToken)
+        {
+            return new SubResponseElementGenericType
+            {
+                SubRequestToken = subRequestToken,
+                ErrorCode = GenericErrorCodeTypes.DependentOnlyOnNotSupportedRequestGetSupported.ToString(),
+                HResult = "2147500037",
+                SubResponseData = new SubResponseDataGenericType()
+            };
+        }
+
+        private SubResponseElementGenericType BuildFeatureDisabledOnServerTenantNotSupportedResponse(string subRequestToken)
+        {
+            return new SubResponseElementGenericType
+            {
+                SubRequestToken = subRequestToken,
+                ErrorCode = GenericErrorCodeTypes.FeatureDisabledOnServerTenantNotSupported.ToString(),
+                HResult = "2147500037",
+                SubResponseData = new SubResponseDataGenericType()
+            };
         }
 
         private SubResponseElementGenericType BuildNotSupportedResponse(string subRequestToken)
@@ -212,7 +248,9 @@ SubRequestElementGenericType subReq,
                     Etag = etag,
                     CreateTime = createTicks.ToString(),
                     LastModifiedTime = lastModTicks.ToString(),
-                    ModifiedBy = "sahil.bharatbhai@anaplan.com"
+                    ModifiedBy = "Sahil Nandaniya",
+                    HaveOnlyDemotionChanges = "False",
+                    IsHybridCobalt = "False",
                 }
             };
         }
@@ -222,7 +260,7 @@ SubRequestElementGenericType subReq,
             return new SubResponseElementGenericType
             {
                 SubRequestToken = subReq.SubRequestToken,
-                ErrorCode = GenericErrorCodeTypes.RequestNotSupported.ToString(),
+                ErrorCode = GenericErrorCodeTypes.Success.ToString(),
                 HResult = "0",
                 SubResponseData = new SubResponseDataGenericType()
             };
@@ -260,7 +298,9 @@ SubRequestElementGenericType subReq,
                     new GetDocMetaInfoPropertyType { Key = "vti_folderitemcount", Value = "0" },
                     new GetDocMetaInfoPropertyType { Key = "vti_level", Value = "1" },
                     new GetDocMetaInfoPropertyType { Key = "vti_parentid", Value = $"{{{parentId}}}" },
-                    new GetDocMetaInfoPropertyType { Key = "vti_replid", Value = $"rid:{{{docId}}}" }
+                    new GetDocMetaInfoPropertyType { Key = "vti_replid", Value = $"rid:{{{docId}}}" },
+                    new GetDocMetaInfoPropertyType { Key = "vti_sourcecontrollockid", Value = SchemaLockId}
+
                 }
             };
 
