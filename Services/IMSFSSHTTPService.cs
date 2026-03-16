@@ -4,6 +4,6 @@ namespace MSFSSHTTP.Services
 {
     public interface IMSFSSHTTPService
     {
-        Task<ResponseEnvelope> CellStorageRequestNew(RequestEnvelope request, string filePath);
+        Task<(ResponseEnvelope Envelope, byte[] BinaryPayload)> CellStorageRequestNew(RequestEnvelope request, string filePath);
     }
 }

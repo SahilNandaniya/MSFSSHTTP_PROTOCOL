@@ -6,12 +6,21 @@ namespace MSFSSHTTP.Services
     public class MSFSSHTTPService : IMSFSSHTTPService
     {
         public string SchemaLockId { get; set; }
-        public Task<ResponseEnvelope> CellStorageRequestNew(RequestEnvelope request, string filePath)
+
+        /// <summary>
+        /// Binary payload generated for the first Cell/QueryChanges sub-request.
+        /// Stored during processing and returned alongside the envelope.
+        /// </summary>
+        private byte[] _binaryPayload;
+
+        public Task<(ResponseEnvelope Envelope, byte[] BinaryPayload)> CellStorageRequestNew(RequestEnvelope request, string filePath)
         {
+            _binaryPayload = null;
+
             var requestCollection = request.Body?.RequestCollection;
             if (requestCollection?.Request == null || requestCollection.Request.Length == 0)
             {
-                return Task.FromResult(BuildErrorResponse("No requests in collection."));
+                return Task.FromResult((BuildErrorResponse("No requests in collection."), (byte[])null));
             }
 
             var responses = new List<Response>();
@@ -63,7 +72,7 @@ namespace MSFSSHTTP.Services
                 }
             };
 
-            return Task.FromResult(envelope);
+            return Task.FromResult((envelope, _binaryPayload));
         }
 
         private SubResponseElementGenericType ProcessSubRequest(SubRequestElementGenericType subReq, string filePath)
@@ -92,7 +101,7 @@ namespace MSFSSHTTP.Services
                             return BuildCellFilePropsResponse(subReq, filePath);
                         }
 
-                        return BuildCellResponse(subReq);
+                        return BuildCellResponse(subReq, filePath);
                     }
                 case SubRequestAttributeType.EditorsTable:
                     return BuildEmptySuccessResponse(subReq.SubRequestToken);
@@ -255,8 +264,16 @@ SubRequestElementGenericType subReq,
             };
         }
 
-        private SubResponseElementGenericType BuildCellResponse(SubRequestElementGenericType subReq)
+        private SubResponseElementGenericType BuildCellResponse(SubRequestElementGenericType subReq, string filePath)
         {
+            // Check if file exists and generate FSSHTTPB binary response
+            if (System.IO.File.Exists(filePath) && _binaryPayload == null)
+            {
+                var fileBytes = System.IO.File.ReadAllBytes(filePath);
+                var storageGuid = Guid.NewGuid();
+                _binaryPayload = FSSHTTPBResponseBuilder.BuildQueryChangesResponse(fileBytes, storageGuid);
+            }
+
             return new SubResponseElementGenericType
             {
                 SubRequestToken = subReq.SubRequestToken,

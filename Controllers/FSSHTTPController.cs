@@ -129,7 +129,7 @@ namespace MSFSSHTTP.Controllers
                         try
                         {
                             var service = HttpContext.RequestServices.GetRequiredService<IMSFSSHTTPService>();
-                            var resp = await service.CellStorageRequestNew(req, filePath);
+                            var (resp, binaryPayload) = await service.CellStorageRequestNew(req, filePath);
 
                             var firstPartitionCellToken = req.Body?.RequestCollection?.Request?
                                 .SelectMany(r => r.SubRequest ?? Array.Empty<SubRequestElementGenericType>())
@@ -196,8 +196,8 @@ namespace MSFSSHTTP.Controllers
                                 xmlPart = sw.ToString();
                             }
 
-                            // Read file stream
-                            byte[] fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+                            // Build binary payload from FSSHTTPB response (not raw file bytes)
+                            byte[] fsshttpbBytes = binaryPayload ?? Array.Empty<byte>();
 
                             // Build multipart response
                             var sb = new StringBuilder();
@@ -228,7 +228,7 @@ namespace MSFSSHTTP.Controllers
                                 attachmentHeaders.AppendLine();
 
                                 responseBytes.AddRange(Encoding.UTF8.GetBytes(attachmentHeaders.ToString()));
-                                responseBytes.AddRange(fileBytes);
+                                responseBytes.AddRange(fsshttpbBytes);
                             }
 
                             responseBytes.AddRange(endBoundary);
