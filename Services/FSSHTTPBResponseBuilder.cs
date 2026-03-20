@@ -14,7 +14,7 @@ namespace MSFSSHTTP.Services
         private static readonly Guid WaterlineKnowledgeGuid = new("3A76E90E-8032-4D0C-B9DD-F3C65029433E");
         private static readonly Guid ContentTagKnowledgeGuid = new("10091F13-C882-40FB-9886-6533F934C21D");
 
-        // Well-known schema GUID for CoBalt storage
+        // Well-known schema GUID for CoBalt storage                
         private static readonly Guid StorageManifestSchemaGuid = new("0EB93394-571D-41E9-AAD3-880D92D31955");
 
         // Root Extended GUID – well-known "default cell storage" root
@@ -158,7 +158,7 @@ namespace MSFSSHTTP.Services
             {
                 ProtocolVersion = 12,
                 MinimumVersion = 11,
-                Signature = 0x9B069439F329CF9C,
+                Signature = 0x9B069439F329CF9D,
                 ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.FsshttpbResponse, 1, 1),
                 Status = 0,
