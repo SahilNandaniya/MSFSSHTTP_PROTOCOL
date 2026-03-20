@@ -47,7 +47,7 @@ namespace MSFSSHTTP.Services
                     RequestedClientImpact = 3,
                     IntervalOverride = "0",
                     ExpectedAccessRead = true,
-                    ExpectedAccessWrite = false,
+                    ExpectedAccessWrite = true,
                     ResourceID = Guid.NewGuid().ToString(),
                     ErrorCode = GenericErrorCodeTypes.Success,
                     ErrorCodeSpecified = false,
@@ -68,7 +68,7 @@ namespace MSFSSHTTP.Services
                     ResponseCollection = new ResponseCollection
                     {
                         //WebUrl = requestCollection.Request[0]?.Url ?? "",
-                        WebUrl = "https://pnq1-lhp-n91356/"
+                        WebUrl = "https://pnq1-lhp-n91356/FSSHTTP/GetDoc/",
                         WebUrlIsEncoded = "False",
                         Response = responses.ToArray()
                     }
@@ -118,9 +118,34 @@ namespace MSFSSHTTP.Services
                 case SubRequestAttributeType.SchemaLock:
                     return BuildDependentOnlyOnNotSupportedRequestGetSupported(subReq.SubRequestToken);
 
+                case SubRequestAttributeType.GetVersions:
+                    return BuildVersionNotSupported(subReq.SubRequestToken);
+
                 default:
                     return BuildNotSupportedResponse(subReq.SubRequestToken);
             }
+        }
+
+        private SubResponseElementGenericType BuildVersionNotSupported(string subRequestToken)
+        {
+            return new SubResponseElementGenericType
+            {
+                SubRequestToken = subRequestToken,
+                ErrorCode = GenericErrorCodeTypes.Success.ToString(),
+                HResult = "2147500037",
+                GetVersionsResponse = new GetVersionsResponseType()
+                {
+                    GetVersionsResult = new GetVersionsResult()
+                    {
+                        results = new Models.Results
+                        {
+                            list = new ResultsList() { id = "00000000-0000-0000-0000-000000000000" },
+                            versioning = new ResultsVersioning() { enabled = 0 },
+                            settings = new ResultsSettings() { url = "" },
+                        }
+                    }
+                }
+            };
         }
 
         private SubResponseElementGenericType BuildDependentOnlyOnNotSupportedRequestGetSupported(string subRequestToken)

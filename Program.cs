@@ -1,3 +1,4 @@
+using MSFSSHTTP.Middleware;
 using MSFSSHTTP.Services;
 using SoapCore;
 
@@ -21,6 +22,11 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
+// Rewrite /_vti_bin/ requests BEFORE routing so attribute-routed
+// FSSHTTP controllers (CellStorage, SharedAccess, etc.) match cleanly.
+// Must be registered before UseRouting().
+app.UseVtiBinRouting();
+
 app.UseRouting();
 
 app.UseAuthorization();
@@ -29,9 +35,11 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
+// WebDAV catch-all: lowest priority, only matched when no attribute route (CellStorage, SharedAccess) wins.
+// Handles GET, HEAD, OPTIONS, PUT, LOCK, UNLOCK, PROPFIND for document file access.
 app.MapControllerRoute(
-    name: "fsshttp_files",
+    name: "webdav_files",
     pattern: "FSSHTTP/{action}/{*path}",
-    defaults: new { controller = "FSSHTTP", action = "Get", path = "" });
+    defaults: new { controller = "WebDav", action = "GetDoc", path = "" });
 
 app.Run();
