@@ -1,5 +1,4 @@
 using MSFSSHTTP.Parsers;
-using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace MSFSSHTTP.Services
@@ -16,12 +15,12 @@ namespace MSFSSHTTP.Services
         private static readonly Guid ContentTagKnowledgeGuid = new("10091F13-C882-40FB-9886-6533F934C21D");
 
         // Well-known schema GUID for CoBalt storage
-        private static readonly Guid StorageManifestSchemaGuid = new("1F76E554-73B4-4B5E-AA51-01AAEEB3F25E");
+        private static readonly Guid StorageManifestSchemaGuid = new("0EB93394-571D-41E9-AAD3-880D92D31955");
 
         // Root Extended GUID – well-known "default cell storage" root
         private static readonly Guid RootGuid = new("84DEFAB9-AAA3-4A0D-A3A8-520C77AC7073");
         private static readonly Guid CellGuid1 = new("84DEFAB9-AAA3-4A0D-A3A8-520C77AC7073");
-        private static readonly Guid CellGuid2 = new("6C3C4FC1-0544-4A6B-9AB5-F4B6ED3D4768");
+        private static readonly Guid CellGuid2 = new("6F2A4665-42C8-46C7-BAB4-E28FDCE1E32B");
 
         /// <summary>
         /// Build a full FSSHTTPB binary QueryChanges response for the given file.
@@ -118,7 +117,7 @@ namespace MSFSSHTTP.Services
             var dataElementPackage = new DataElementPackage
             {
                 DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.DataElementPackage, 0, 1),
+                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
                 Reserved = 0x00,
                 DataElements = dataElements.ToArray(),
                 DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
@@ -161,7 +160,7 @@ namespace MSFSSHTTP.Services
                 MinimumVersion = 11,
                 Signature = 0x9B069439F329CF9C,
                 ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.FsshttpbResponse, 0, 1),
+                    StreamObjectTypeHeaderStart.FsshttpbResponse, 1, 1),
                 Status = 0,
                 Reserved = 0,
                 DataElementPackage = dataElementPackage,
@@ -171,6 +170,170 @@ namespace MSFSSHTTP.Services
             };
 
             // Step 9: Serialize to bytes
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            response.Serialize(writer);
+            writer.Flush();
+            return ms.ToArray();
+        }
+
+        /// <summary>
+        /// Build a minimal valid FSSHTTPB binary QueryChanges response with no data elements.
+        /// Used for partitions where no document content is required (metadata, editors table).
+        /// Returns a structurally complete FSSHTTPB response that Word accepts.
+        /// </summary>
+        public static byte[] BuildEmptyQueryChangesResponse()
+        {
+            // Step 1: Build empty Knowledge (no SpecializedKnowledge elements)
+            var knowledge = new Knowledge
+            {
+                KnowledgeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.Knowledge, 0),
+                SpecializedKnowledge = new MSFSSHTTP.Parsers.SpecializedKnowledge[0],
+                KnowledgeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Knowledge)
+            };
+
+            // Step 2: Build QueryChanges Response with null StorageIndexExtendedGUID
+            var queryChangesResp = new QueryChangesResponse
+            {
+                queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.QueryChangesResponse, 0, 1),
+                StorageIndexExtendedGUID = new ExtendedGUIDNullValue { Type = 0x00 },
+                P = 0,
+                Reserved = 0,
+                Knowledge = knowledge
+            };
+
+            // Step 3: Build SubResponse wrapper
+            var subResponse = new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse, 0, 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(2), // QueryChanges = 0x02
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = queryChangesResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+
+            // Step 4: Build empty DataElementPackage (no data elements)
+            var dataElementPackage = new DataElementPackage
+            {
+                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElementPackage, 0, 1),
+                Reserved = 0x00,
+                DataElements = new object[0],
+                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElementPackage)
+            };
+
+            // Step 5: Build FsshttpbResponse
+            var response = new FsshttpbResponse
+            {
+                ProtocolVersion = 12,
+                MinimumVersion = 11,
+                Signature = 0x9B069439F329CF9C,
+                ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbResponse, 0, 1),
+                Status = 0,
+                Reserved = 0,
+                DataElementPackage = dataElementPackage,
+                SubResponses = new[] { subResponse },
+                ResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Response)
+            };
+
+            // Step 6: Serialize to bytes
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            response.Serialize(writer);
+            writer.Flush();
+            return ms.ToArray();
+        }
+
+        /// <summary>
+        /// Build a QueryAccess FSSHTTPB binary response granting both read and write access (HRESULT S_OK).
+        /// Used for Cell SubRequests with no PartitionID and no DependsOn (RequestType=1).
+        /// The binary is base64-encoded and placed inline as SubResponseData text content.
+        /// </summary>
+        public static byte[] BuildQueryAccessResponse()
+        {
+            // Helper: S_OK ResponseError with HRESULT GUID
+            ResponseError BuildSOKResponseError() => new ResponseError
+            {
+                ErrorStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.ResponseError, 16, compound: 1),
+                ErrorTypeGUID = new Guid("8454c8f2-e401-405a-a198-a10b6991b56e"),
+                ErrorData = new HRESULTError
+                {
+                    ErrorHRESULT = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.HRESULTError, 4, compound: 0),
+                    ErrorCode = 0  // S_OK
+                },
+                ErrorEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Error)
+            };
+
+            // Step 1: Build QueryAccessResponse (read + write access both granted)
+            var queryAccessResp = new QueryAccessResponse
+            {
+                ReadAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.ReadAccessResponse, 0, compound: 1),
+                ReadAccessResponseError = BuildSOKResponseError(),
+                ReadAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.ReadAccessResponse),
+                WriteAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.WriteAccessResponse, 0, compound: 1),
+                WriteAccessResponseError = BuildSOKResponseError(),
+                WriteAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.WriteAccessResponse)
+            };
+
+            // Step 2: Build SubResponse with RequestType=1 (QueryAccess)
+            var subResponse = new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse, 3, compound: 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(1), // QueryAccess = 0x01
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = queryAccessResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+
+            // Step 3: Build empty DataElementPackage
+            var dataElementPackage = new DataElementPackage
+            {
+                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElementPackage, 0, 1),
+                Reserved = 0x00,
+                DataElements = new object[0],
+                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElementPackage)
+            };
+
+            // Step 4: Build FsshttpbResponse (ProtocolVersion=13 per spec for QueryAccess)
+            var response = new FsshttpbResponse
+            {
+                ProtocolVersion = 13,
+                MinimumVersion = 11,
+                Signature = 0x9B069439F329CF9C,
+                ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbResponse, 0, 1),
+                Status = 0,
+                Reserved = 0,
+                DataElementPackage = dataElementPackage,
+                SubResponses = new[] { subResponse },
+                ResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Response)
+            };
+
+            // Step 5: Serialize to bytes
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
             response.Serialize(writer);

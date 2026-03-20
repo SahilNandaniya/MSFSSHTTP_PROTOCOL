@@ -43,7 +43,7 @@ namespace MSFSSHTTP.Services
                     Url = req.Url,
                     UrlIsEncoded = "False",
                     RequestToken = req.RequestToken,
-                    HealthScore = "0",
+                    HealthScore = "2",
                     RequestedClientImpact = 3,
                     IntervalOverride = "0",
                     ExpectedAccessRead = true,
@@ -51,7 +51,8 @@ namespace MSFSSHTTP.Services
                     ResourceID = Guid.NewGuid().ToString(),
                     ErrorCode = GenericErrorCodeTypes.Success,
                     ErrorCodeSpecified = false,
-                    SubResponse = subResponses.ToArray()
+                    SubResponse = subResponses.ToArray(),
+                    TenantId = "e777e544-630e-475c-a07a-cd4143ce5140"
                 });
             }
 
@@ -62,11 +63,13 @@ namespace MSFSSHTTP.Services
                     ResponseVersion = new ResponseVersion
                     {
                         Version = 2,
-                        MinorVersion = 2
+                        MinorVersion = 3
                     },
                     ResponseCollection = new ResponseCollection
                     {
-                        WebUrl = requestCollection.Request[0]?.Url ?? "",
+                        //WebUrl = requestCollection.Request[0]?.Url ?? "",
+                        WebUrl = "https://pnq1-lhp-n91356/"
+                        WebUrlIsEncoded = "False",
                         Response = responses.ToArray()
                     }
                 }
@@ -247,6 +250,14 @@ SubRequestElementGenericType subReq,
                 ? $"\"{{{Guid.NewGuid().ToString().ToUpper()}}},1\""
                 : "\"0\"";
 
+            // Check if file exists and generate FSSHTTPB binary response
+            if (System.IO.File.Exists(filePath) && _binaryPayload == null)
+            {
+                var fileBytes = System.IO.File.ReadAllBytes(filePath);
+                var storageGuid = Guid.NewGuid();
+                _binaryPayload = FSSHTTPBResponseBuilder.BuildQueryChangesResponse(fileBytes, storageGuid);
+            }
+
             return new SubResponseElementGenericType
             {
                 SubRequestToken = subReq.SubRequestToken,
@@ -266,14 +277,6 @@ SubRequestElementGenericType subReq,
 
         private SubResponseElementGenericType BuildCellResponse(SubRequestElementGenericType subReq, string filePath)
         {
-            // Check if file exists and generate FSSHTTPB binary response
-            if (System.IO.File.Exists(filePath) && _binaryPayload == null)
-            {
-                var fileBytes = System.IO.File.ReadAllBytes(filePath);
-                var storageGuid = Guid.NewGuid();
-                _binaryPayload = FSSHTTPBResponseBuilder.BuildQueryChangesResponse(fileBytes, storageGuid);
-            }
-
             return new SubResponseElementGenericType
             {
                 SubRequestToken = subReq.SubRequestToken,

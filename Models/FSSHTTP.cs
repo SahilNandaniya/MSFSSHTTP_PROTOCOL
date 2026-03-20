@@ -476,6 +476,7 @@
         [XmlAttribute(DataType = "nonNegativeInteger")]
         public string IntervalOverride { get; set; }
 
+        [XmlAttribute()]
         public int RequestedClientImpact { get; set; }
 
         [XmlAttribute]
