@@ -42,7 +42,7 @@ namespace MSFSSHTTP.Controllers
             string contentId = DateTime.UtcNow.Ticks.ToString();
 
             // Set multipart/related content type
-            Response.ContentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"<rootpart@tempuri.org>\"; start-info=\"text/xml\"";
+            Response.ContentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"<http://tempuri.org/0>\"; start-info=\"text/xml\"";
             Response.Headers["Cache-Control"] = "private, max-age=0";
             Response.Headers["Accept-Ranges"] = "bytes";
             Response.Headers["DAV"] = "1,2";
@@ -128,12 +128,12 @@ namespace MSFSSHTTP.Controllers
 
                 if (editorTableCells.Count > 0)
                 {
-                    editorTableBytes = FSSHTTPBResponseBuilder.BuildEmptyQueryChangesResponse();
+                    editorTableBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse();
                 }
 
                 if (metadataCells.Count > 0)
                 {
-                    metadataBytes = FSSHTTPBResponseBuilder.BuildEmptyQueryChangesResponse();
+                    metadataBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse();
                 }
 
                 if (queryAccessCells.Count > 0)
@@ -195,18 +195,7 @@ namespace MSFSSHTTP.Controllers
                                     {
                                         href = $"cid:http://tempuri.org/{mimePartIndex}/{contentId}"
                                     };
-                                    subResponse.SubResponseData.Etag = fileInfo.Exists
-                                        ? $"\"{{{Guid.NewGuid().ToString().ToUpper()}}},1\""
-                                        : "\"0\"";
-                                    subResponse.SubResponseData.CreateTime = fileInfo.Exists
-                                        ? fileInfo.CreationTimeUtc.Ticks.ToString()
-                                        : "0";
-                                    subResponse.SubResponseData.LastModifiedTime = fileInfo.Exists
-                                        ? fileInfo.LastWriteTimeUtc.Ticks.ToString()
-                                        : "0";
-                                    subResponse.SubResponseData.ModifiedBy = "Nandaniya Sahil Bharatbhai";
-                                    subResponse.SubResponseData.HaveOnlyDemotionChanges = "False";
-                                    subResponse.SubResponseData.IsHybridCobalt = "True";
+                                    subResponse.ServerCorrelationId = requestId;
                                     mimePartIndex++;
                                 }
                                 else if (isEditorsTable && editorTableBytes != null)
@@ -223,6 +212,7 @@ namespace MSFSSHTTP.Controllers
                                     // Metadata: no MTOM MIME part, no Include element
                                     // Send FSSHTTPB binary inline as base64-encoded text content
                                     subResponse.SubResponseData.Text = new[] { Convert.ToBase64String(metadataBytes!) };
+                                    subResponse.ServerCorrelationId = requestId;
                                 }
                             }
                         }

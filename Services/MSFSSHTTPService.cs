@@ -1,5 +1,6 @@
 //using FSSHTTPandWOPIInspector.Parsers;
 using MSFSSHTTP.Models;
+using MSFSSHTTP.Utilities;
 
 namespace MSFSSHTTP.Services
 {
@@ -48,7 +49,7 @@ namespace MSFSSHTTP.Services
                     IntervalOverride = "0",
                     ExpectedAccessRead = true,
                     ExpectedAccessWrite = true,
-                    ResourceID = Guid.NewGuid().ToString(),
+                    ResourceID = GlobalConstant.StableDocumentId.ToString("N"),
                     ErrorCode = GenericErrorCodeTypes.Success,
                     ErrorCodeSpecified = false,
                     SubResponse = subResponses.ToArray(),
@@ -255,9 +256,7 @@ namespace MSFSSHTTP.Services
                     LockType = LockTypes.SchemaLock.ToString(),
                     LockTypeSpecified = true,
                     CoauthStatusSpecified = true,
-                    TransitionID = Guid.NewGuid().ToString()
-                    // t specifies the unique file identifier stored for that file on the
-                    //protocol server.- fileID probably
+                    TransitionID = GlobalConstant.StableDocumentId.ToString()
                 }
             };
         }
@@ -268,11 +267,11 @@ SubRequestElementGenericType subReq,
         {
             var fi = new FileInfo(filePath);
 
-            long lastModTicks = fi.Exists ? fi.LastWriteTimeUtc.Ticks : 0;
-            long createTicks = fi.Exists ? fi.CreationTimeUtc.Ticks : 0;
+            long lastModTicks = fi.Exists ? fi.LastWriteTimeUtc.ToFileTimeUtc() : 0;
+            long createTicks = fi.Exists ? fi.CreationTimeUtc.ToFileTimeUtc() : 0;
 
             var etag = fi.Exists
-                ? $"\"{{{Guid.NewGuid().ToString().ToUpper()}}},1\""
+                ? $"\"{{{GlobalConstant.StableDocumentId.ToString().ToUpper()}}},1\""
                 : "\"0\"";
 
             // Check if file exists and generate FSSHTTPB binary response
@@ -317,9 +316,10 @@ SubRequestElementGenericType subReq,
             var now = DateTime.UtcNow;
             var created = fi.Exists ? fi.CreationTimeUtc : now;
             var modified = fi.Exists ? fi.LastWriteTimeUtc : now;
-            var etag = fi.Exists ? $"\"{fi.LastWriteTimeUtc.Ticks:x}\"" : "\"0\"";
+            //var etag = fi.Exists ? $"\"{fi.LastWriteTimeUtc.Ticks:x}\"" : "\"0\"";
+            //var etag = GlobalConstant.StableDocumentId.ToString().ToUpper();
             var fileSize = fi.Exists ? fi.Length.ToString() : "0";
-            var docId = Guid.NewGuid().ToString().ToUpper();
+            var docId = GlobalConstant.StableDocumentId.ToString().ToUpper();
             var listId = Guid.NewGuid().ToString().ToUpper();
             var parentId = Guid.NewGuid().ToString().ToUpper();
 
@@ -330,7 +330,7 @@ SubRequestElementGenericType subReq,
                     new GetDocMetaInfoPropertyType { Key = "vti_timecreated", Value = created.ToString("yyyy-MM-ddTHH:mm:ss") },
                     new GetDocMetaInfoPropertyType { Key = "vti_timelastmodified", Value = modified.ToString("yyyy-MM-ddTHH:mm:ss") },
                     new GetDocMetaInfoPropertyType { Key = "vti_filesize", Value = fileSize },
-                    new GetDocMetaInfoPropertyType { Key = "vti_etag", Value = etag },
+                    new GetDocMetaInfoPropertyType { Key = "vti_etag", Value = $"&quot;{{{docId}}},1&quot;" },
                     new GetDocMetaInfoPropertyType { Key = "vti_author", Value = "sahil.bharatbhai@anaplan.com" },
                     new GetDocMetaInfoPropertyType { Key = "vti_modifiedby", Value = "sahil.bharatbhai@anaplan.com" },
                     new GetDocMetaInfoPropertyType { Key = "vti_docstoreversion", Value = "1" },
@@ -344,7 +344,8 @@ SubRequestElementGenericType subReq,
                     new GetDocMetaInfoPropertyType { Key = "vti_level", Value = "1" },
                     new GetDocMetaInfoPropertyType { Key = "vti_parentid", Value = $"{{{parentId}}}" },
                     new GetDocMetaInfoPropertyType { Key = "vti_replid", Value = $"rid:{{{docId}}}" },
-                    new GetDocMetaInfoPropertyType { Key = "vti_sourcecontrollockid", Value = SchemaLockId}
+                    new GetDocMetaInfoPropertyType { Key = "vti_sourcecontrollockid", Value = SchemaLockId},
+                    new GetDocMetaInfoPropertyType { Key = "vti_sourcecontrolcheckedoutby", Value = "V2.0" }
 
                 }
             };
