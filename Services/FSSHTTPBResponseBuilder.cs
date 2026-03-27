@@ -56,7 +56,7 @@ namespace MSFSSHTTP.Services
             // Step 3: Build Data Elements
             var dataElements = new List<object>();
 
-            // 3a: Storage Index
+            // 3a: Storage  
             var storageIndex = BuildStorageIndex(
                 storageIndexGuid, serialNumber,
                 storageManifestGuid,
@@ -378,39 +378,41 @@ namespace MSFSSHTTP.Services
         // 1. Storage Index
         new StorageIndexDataElement
         {
+            // length can not be zero
+            // 21 bytes of Extended GUID + 25 byte of Serial Number + 1 byte of DataElementType
             DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.DataElement, 0, 1),
+                StreamObjectTypeHeaderStart.DataElement, 47, 1),
             DataElementExtendedGUID = storageIndexGuid,
             SerialNumber = sn,
             DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
                 (ulong)DataElementTypes.StorageIndex),
             StorageIndexDataElementData = new object[]
             {
-                new StorageIndexManifestMappingValues
-                {
-                    StorageIndexManifestMapping = FSSHTTPBSerializer
-                        .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.StorageIndexManifestMapping, 0),
-                    ManifestMappingExtendedGUID = storageManifestGuid,
-                    ManifestMappingSerialNumber = sn
-                },
                 new StorageIndexCellMappingValues
                 {
                     StorageIndexCellMapping = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.StorageIndexCellMapping, 0),
-                    CellID = cellId,
-                    CellMappingExtendedGUID = cellManifestGuid,
-                    CellMappingSerialNumber = sn
+                            StreamObjectTypeHeaderStart.StorageIndexCellMapping, 80),
+                    CellID = cellId, // 34 bytes
+                    CellMappingExtendedGUID = cellManifestGuid, // 21 bytes
+                    CellMappingSerialNumber = sn // 25 bytes
+                },
+                new StorageIndexManifestMappingValues
+                {
+                    StorageIndexManifestMapping = FSSHTTPBSerializer
+                        .Create16BitStreamObjectHeaderStart(
+                            StreamObjectTypeHeaderStart.StorageIndexManifestMapping, 46),
+                    ManifestMappingExtendedGUID = storageManifestGuid, // 21 bytes
+                    ManifestMappingSerialNumber = sn // 25 bytes
                 },
                 new StorageIndexRevisionMappingValues
                 {
                     StorageIndexRevisionMapping = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.StorageIndexRevisionMapping, 0),
-                    RevisionExtendedGUID = revisionIdGuid,
-                    RevisionMappingExtendedGUID = revisionManifestGuid,
-                    RevisionMappingSerialNumber = sn
+                            StreamObjectTypeHeaderStart.StorageIndexRevisionMapping, 67),
+                    RevisionExtendedGUID = revisionIdGuid, // 21 bytes
+                    RevisionMappingExtendedGUID = revisionManifestGuid, // 21 bytes
+                    RevisionMappingSerialNumber = sn // 25 bytes
                 }
             },
             DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
@@ -421,11 +423,11 @@ namespace MSFSSHTTP.Services
         new StorageManifestDataElement
         {
             DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.DataElement, 0, 1),
-            DataElementExtendedGUID = storageManifestGuid,
-            SerialNumber = sn,
+                StreamObjectTypeHeaderStart.DataElement, 47, 1),
+            DataElementExtendedGUID = storageManifestGuid, // 21 bytes
+            SerialNumber = sn, // 25 bytes
             DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
-                (ulong)DataElementTypes.StorageManifest),
+                (ulong)DataElementTypes.StorageManifest), // 1 byte
             StorageManifestSchemaGUID = FSSHTTPBSerializer
                 .Create16BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.StorageManifestSchemaGUID, 16),
@@ -436,7 +438,7 @@ namespace MSFSSHTTP.Services
                 {
                     StorageManifestRootDeclare = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.StorageManifestRootDeclare, 0),
+                            StreamObjectTypeHeaderStart.StorageManifestRootDeclare, 51),
                     RootExtendedGUID = new ExtendedGUID5BitUintValue
                         { Type = 0x04, Value = 2, GUID = RootGuid },
                     CellID = cellId
@@ -450,14 +452,14 @@ namespace MSFSSHTTP.Services
         new CellManifestDataElement
         {
             DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.DataElement, 0, 1),
-            DataElementExtendedGUID = cellManifestGuid,
-            SerialNumber = sn,
+                StreamObjectTypeHeaderStart.DataElement, 47, 1),
+            DataElementExtendedGUID = cellManifestGuid, // 21 bytes
+            SerialNumber = sn, // 25 bytes
             DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
-                (ulong)DataElementTypes.CellManifest),
+                (ulong)DataElementTypes.CellManifest), // 1 byte
             CellManifestCurrentRevision = FSSHTTPBSerializer
                 .Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.CellManifestCurrentRevision, 0),
+                    StreamObjectTypeHeaderStart.CellManifestCurrentRevision, 21),
             CellManifestCurrentRevisionExtendedGUID = revisionIdGuid,
             DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
                 StreamObjectTypeHeaderEnd.DataElement)
@@ -467,31 +469,31 @@ namespace MSFSSHTTP.Services
         new RevisionManifestDataElement
         {
             DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.DataElement, 0, 1),
-            DataElementExtendedGUID = revisionManifestGuid,
-            SerialNumber = sn,
+                StreamObjectTypeHeaderStart.DataElement, 47, 1),
+            DataElementExtendedGUID = revisionManifestGuid, // 21 bytes
+            SerialNumber = sn, // 25 bytes
             DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
-                (ulong)DataElementTypes.RevisionManifest),
+                (ulong)DataElementTypes.RevisionManifest), // 1 byte
             RevisionManifest = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.RevisionManifest, 0, 1),
-            RevisionID = revisionIdGuid,
-            BaseRevisionID = new ExtendedGUIDNullValue { Type = 0x00 },
+                StreamObjectTypeHeaderStart.RevisionManifest, 22, 1),
+            RevisionID = revisionIdGuid, // 21 bytes
+            BaseRevisionID = new ExtendedGUIDNullValue { Type = 0x00 }, // 1 byte
             RevisionManifestDataElementsData = new object[]
             {
                 new RevisionManifestRootDeclareValues
                 {
                     RevisionManifestRootDeclare = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.RevisionManifestRootDeclare, 0),
+                            StreamObjectTypeHeaderStart.RevisionManifestRootDeclare, 38),
                     RootExtendedGUID = new ExtendedGUID5BitUintValue
-                        { Type = 0x04, Value = 2, GUID = RootGuid },
-                    ObjectExtendedGUID = rootObjectGuid
+                        { Type = 0x04, Value = 2, GUID = RootGuid }, // 17 bytes
+                    ObjectExtendedGUID = rootObjectGuid // 21 bytes
                 },
                 new RevisionManifestObjectGroupReferencesValues
                 {
                     RevisionManifestObjectGroupReferences = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.RevisionManifestObjectGroupReferences, 0),
+                            StreamObjectTypeHeaderStart.RevisionManifestObjectGroupReferences, 21),
                     ObjectGroupExtendedGUID = objectGroupGuid
                 }
             },
@@ -503,11 +505,11 @@ namespace MSFSSHTTP.Services
         new ObjectGroupDataElements
         {
             DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                StreamObjectTypeHeaderStart.DataElement, 0, 1),
-            DataElementExtendedGUID = objectGroupGuid,
-            SerialNumber = sn,
+                StreamObjectTypeHeaderStart.DataElement, 47, 1),
+            DataElementExtendedGUID = objectGroupGuid, // 21 bytes
+            SerialNumber = sn, // 25 bytes
             DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
-                (ulong)DataElementTypes.ObjectGroup),
+                (ulong)DataElementTypes.ObjectGroup), // 1 byte
             ObjectGroupDeclarationsStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
                 StreamObjectTypeHeaderStart.ObjectGroupDeclarations, 0, 1),
             ObjectDeclarationOrObjectDataBLOBDeclaration = new object[]
@@ -516,13 +518,13 @@ namespace MSFSSHTTP.Services
                 {
                     ObjectGroupObjectDeclaration = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare, 0),
-                    ObjectExtendedGUID = rootObjectGuid,
-                    ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                            StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare, 25),
+                    ObjectExtendedGUID = rootObjectGuid, // 21 bytes
+                    ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1), // 1 byte
                     ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64(
-                        (ulong)rootNodeBytes.Length),
-                    ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0),
-                    CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0)
+                        (ulong)rootNodeBytes.Length), // this is variable part - need to handle it.
+                    ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0), // 1 byte
+                    CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0) // 1 byte 
                 }
             },
             ObjectGroupDeclarationsEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
@@ -535,13 +537,13 @@ namespace MSFSSHTTP.Services
                 {
                     ObjectGroupObjectDataOrExcludedData = FSSHTTPBSerializer
                         .Create16BitStreamObjectHeaderStart(
-                            StreamObjectTypeHeaderStart.ObjectGroupObjectData, 0),
+                            StreamObjectTypeHeaderStart.ObjectGroupObjectData, (byte)(3 + rootNodeBytes.Length)),
                     ObjectExtendedGUIDArray = new ExtendedGUIDArray
                         { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
                     CellIDArray = new CellIDArray
                         { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
                     DataSize = FSSHTTPBSerializer.CreateCompactUint64(
-                        (ulong)rootNodeBytes.Length),
+                        (ulong)rootNodeBytes.Length), // this is variable part - need to handle it.
                     Data = rootNodeBytes
                 }
             },
@@ -553,13 +555,13 @@ namespace MSFSSHTTP.Services
             };
 
             // Knowledge with Cell + Waterline, serial 0→1
-            var knowledge = BuildKnowledge(sessionGuid, serialVal: 1);
+            var knowledge = BuildEmptyKnowledge();
 
             var queryChangesResp = new QueryChangesResponse
             {
                 queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.QueryChangesResponse, 0, 1),
-                StorageIndexExtendedGUID = storageIndexGuid,   // ← non-null
+                    StreamObjectTypeHeaderStart.QueryChangesResponse, 23, 1),
+                StorageIndexExtendedGUID = storageIndexGuid,   // ← non-null 21byte
                 P = 0,
                 Reserved = 0,
                 Knowledge = knowledge
@@ -568,7 +570,7 @@ namespace MSFSSHTTP.Services
             var subResponse = new FsshttpbSubResponse
             {
                 SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.FsshttpbSubResponse, 1, 1),
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse, 3, 1),
                 RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
                 RequestType = FSSHTTPBSerializer.CreateCompactUint64(2),
                 Status = 0,
@@ -1072,10 +1074,9 @@ namespace MSFSSHTTP.Services
             byte[] fileBytes)
         {
             // Declaration for root object (intermediate node)
-            ulong totalSize = (ulong)fileBytes.LongLength;
             ulong referencesCount = (ulong)childObjectGuids.Count;
 
-            // 1. The Inner Data Size is the total uncompressed file size
+            // The Inner Data Size is the total uncompressed file size
             ulong totalFileSize = (ulong)fileBytes.LongLength;
 
             var rootDecl = new ObjectDeclaration
@@ -1091,40 +1092,13 @@ namespace MSFSSHTTP.Services
 
             // Build Object Data for root (intermediate node)
             // Per MS-FSSHTTPD 2.2.2.1: IntermediateNodeObject has Signature + DataSize
+            // The root intermediate node signature is the SHA-1 hash of the entire file content.
+            // Ref: OfficeDev/Interop-TestSuites NodeObject.cs RootNodeObjectBuilder.Build(byte[])
             byte[] signatureBytes = Sha1(fileBytes);
 
-            // Build the IntermediateNodeObjectData binary
-            byte[] intermediateNodeBytes;
-            using (var ims = new MemoryStream())
-            using (var iw = new BinaryWriter(ims))
-            {
-                var intermediateNode = new IntermediateNodeObjectData
-                {
-                    IntermediateNodeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                        StreamObjectTypeHeaderStart.IntermediateNodeObject, 0, 1),
-                    SignatureHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                        StreamObjectTypeHeaderStart.SignatureObject, 1),
-                    SignatureData = new BinaryItem
-                    {
-                        Length = FSSHTTPBSerializer.CreateCompactUint64(0),
-                        Content = null
-                    },
-                    DataSizeHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                        StreamObjectTypeHeaderStart.DataSizeObject, 8),
-                    DataSize = totalFileSize,
-                    IntermediateNodeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
-                        StreamObjectTypeHeaderEnd.IntermediateNodeEnd)
-                };
-                intermediateNode.Serialize(iw);
-                iw.Flush();
-                intermediateNodeBytes = ims.ToArray();
-            }
-
-            // 3. Calculate the Outer Object Data Size
-            // Because the signature is empty, the intermediate node serializes to exactly 16 bytes:
-            // (Start: 2 bytes) + (SigHeader: 2 bytes) + (SigData: 1 byte) + (DataSizeHeader: 2 bytes) + (DataSize: 8 bytes) + (End: 1 byte) = 16
-            ulong serializedNodeSize = 16;
-
+            // Build the IntermediateNodeObjectData binary using the shared helper
+            // (consistent with BuildIntermediateNodeBytes used for non-root intermediate nodes)
+            byte[] intermediateNodeBytes = BuildIntermediateNodeBytes(signatureBytes, totalFileSize);
 
             // Update root declaration data size
             rootDecl.ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)intermediateNodeBytes.Length);
@@ -1411,12 +1385,16 @@ namespace MSFSSHTTP.Services
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
 
+            // Per MS-FSSHTTPB 2.2.1.5.1: non-compound 16-bit header Length = payload bytes.
+            // SignatureObject payload = BinaryItem(CompactUint64 length + content bytes).
+            byte signaturePayloadLength = ComputeBinaryItemSerializedLength(signature);
+
             var leaf = new LeafNodeObjectData
             {
                 LeafNodeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.LeafNodeObject, 0, 1),
                 SignatureHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.SignatureObject, 0),
+                    StreamObjectTypeHeaderStart.SignatureObject, signaturePayloadLength),
                 SignatureData = new BinaryItem
                 {
                     Length = FSSHTTPBSerializer.CreateCompactUint64((ulong)signature.Length),
@@ -1439,12 +1417,15 @@ namespace MSFSSHTTP.Services
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
 
+            // Per MS-FSSHTTPB 2.2.1.5.1: non-compound 16-bit header Length = payload bytes.
+            byte signaturePayloadLength = ComputeBinaryItemSerializedLength(signature);
+
             var node = new IntermediateNodeObjectData
             {
                 IntermediateNodeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.IntermediateNodeObject, 0, 1),
                 SignatureHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.SignatureObject, 0),
+                    StreamObjectTypeHeaderStart.SignatureObject, signaturePayloadLength),
                 SignatureData = new BinaryItem
                 {
                     Length = FSSHTTPBSerializer.CreateCompactUint64((ulong)signature.Length),
@@ -1562,6 +1543,17 @@ namespace MSFSSHTTP.Services
             };
         }
 
+        private static Knowledge BuildEmptyKnowledge()
+        {
+            return new Knowledge
+            {
+                KnowledgeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                   StreamObjectTypeHeaderStart.Knowledge, 0),
+                KnowledgeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                   StreamObjectTypeHeaderEnd.Knowledge)
+            };
+        }
+
         #endregion
 
         #region Helper: ExtendedGUID factory
@@ -1584,6 +1576,42 @@ namespace MSFSSHTTP.Services
                 Value = value++,
                 GUID = guid
             };
+        }
+
+        #endregion
+
+        #region Helper: BinaryItem serialized length
+
+        /// <summary>
+        /// Compute the serialized byte length of a BinaryItem for a given content byte array.
+        /// BinaryItem = CompactUnsigned64bitInteger(length) + content bytes.
+        /// Used to set the Length field in non-compound 16-bit stream object headers.
+        /// </summary>
+        private static byte ComputeBinaryItemSerializedLength(byte[] content)
+        {
+            int contentLength = content?.Length ?? 0;
+            int compactUintSize = GetCompactUint64SerializedSize((ulong)contentLength);
+            int total = compactUintSize + contentLength;
+            // 16-bit header Length field is 7 bits (max 127). If total exceeds 127,
+            // the caller must use a 32-bit header instead. For typical signatures (≤20 bytes),
+            // this will always fit.
+            return (byte)Math.Min(total, 127);
+        }
+
+        /// <summary>
+        /// Returns the serialized byte size of a CompactUnsigned64bitInteger for a given value.
+        /// </summary>
+        private static int GetCompactUint64SerializedSize(ulong value)
+        {
+            if (value == 0) return 1;
+            if (value <= 0x7F) return 1;
+            if (value <= 0x3FFF) return 2;
+            if (value <= 0x1FFFFF) return 3;
+            if (value <= 0x0FFFFFFF) return 4;
+            if (value <= 0x7FFFFFFFF) return 5;
+            if (value <= 0x3FFFFFFFFFF) return 6;
+            if (value <= 0x1FFFFFFFFFFFF) return 7;
+            return 9;
         }
 
         #endregion
