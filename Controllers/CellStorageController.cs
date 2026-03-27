@@ -153,7 +153,12 @@ namespace MSFSSHTTP.Controllers
                             continue;
                         }
 
-                        int mimePartIndex = 1; // Start at 1 (part 0 is the SOAP envelope)
+                        // MIME part indices must match the fixed order in which parts are written:
+                        // Part 0 = SOAP XML envelope
+                        // Part 1 = editors table (if present)
+                        // Part N = file contents (next index after editors table)
+                        int editorsTableMimeIndex = 1;
+                        int fileContentsMimeIndex = (editorTableBytes?.Length ?? 0) > 0 ? 2 : 1;
 
                         foreach (var subResponse in response.SubResponse)
                         {
@@ -193,19 +198,17 @@ namespace MSFSSHTTP.Controllers
                                     // File contents: MTOM MIME part with file metadata
                                     subResponse.SubResponseData.Include = new Include
                                     {
-                                        href = $"cid:http://tempuri.org/{mimePartIndex}/{contentId}"
+                                        href = $"cid:http://tempuri.org/{fileContentsMimeIndex}/{contentId}"
                                     };
                                     subResponse.ServerCorrelationId = requestId;
-                                    mimePartIndex++;
                                 }
                                 else if (isEditorsTable && editorTableBytes != null)
                                 {
                                     // Editors table: MTOM MIME part without metadata
                                     subResponse.SubResponseData.Include = new Include
                                     {
-                                        href = $"cid:http://tempuri.org/{mimePartIndex}/{contentId}"
+                                        href = $"cid:http://tempuri.org/{editorsTableMimeIndex}/{contentId}"
                                     };
-                                    mimePartIndex++;
                                 }
                                 else if (isMetadata && metadataBytes != null && metadataBytes.Length > 0)
                                 {

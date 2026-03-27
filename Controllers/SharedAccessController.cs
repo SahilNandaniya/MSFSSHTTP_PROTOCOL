@@ -34,15 +34,15 @@ namespace MSFSSHTTP.Controllers
             var requestId = Guid.NewGuid().ToString("D");
             Response.Headers["Cache-Control"] = "private, max-age=0";
             //Response.Headers["SPRequestGuid"] = requestId;
-            //Response.Headers["request-id"] = requestId;
+            Response.Headers["request-id"] = requestId;
             //Response.Headers["SPLogId"] = requestId;
             //Response.Headers["X-SharePointHealthScore"] = "0";
             Response.Headers["MicrosoftSharePointTeamServices"] = "16.0.0.27104";
             Response.Headers["X-Content-Type-Options"] = "nosniff";
-            //Response.Headers["X-MS-InvokeApp"] = "1; RequireReadOnly";
+            Response.Headers["X-MS-InvokeApp"] = "1; RequireReadOnly";
             //Response.Headers["X-Powered-By"] = "ASP.NET";
             //Response.Headers["IsOCDI"] = "0";
-            //Response.Headers["X-DataBoundary"] = "NONE";
+            Response.Headers["X-DataBoundary"] = "NONE";
 
             string responseXml;
 
