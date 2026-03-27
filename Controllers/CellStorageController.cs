@@ -20,6 +20,7 @@ namespace MSFSSHTTP.Controllers
     /// cell storage queries, schema locks, and related operations.
     /// </summary>
     [Route("_vti_bin/cellstorage.svc/CellStorageService")]
+    [Authorize] // Enforce authentication for all operations in this controller
     public class CellStorageController : Controller
     {
         private readonly IWebHostEnvironment _env;
@@ -30,7 +31,7 @@ namespace MSFSSHTTP.Controllers
         }
 
         [HttpPost]
-        [AllowAnonymous]
+        //[AllowAnonymous]
         public async Task<IActionResult> ProcessCellStorageRequest()
         {
             string fileName = "DemoFSSHTTPDocument.docx";  //ATTENTION: Hardcoded for testing purposes
