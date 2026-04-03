@@ -128,12 +128,12 @@ namespace MSFSSHTTP.Controllers
 
                 if (editorTableCells.Count > 0)
                 {
-                    editorTableBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse();
+                    editorTableBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse(_env.WebRootPath);
                 }
 
                 if (metadataCells.Count > 0)
                 {
-                    metadataBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse();
+                    metadataBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse(_env.WebRootPath);
                 }
 
                 if (queryAccessCells.Count > 0)
