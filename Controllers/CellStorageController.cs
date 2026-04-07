@@ -133,7 +133,7 @@ namespace MSFSSHTTP.Controllers
 
                 if (metadataCells.Count > 0)
                 {
-                    metadataBytes = FSSHTTPBResponseBuilder.BuildMinimalPartitionResponse(_env.WebRootPath);
+                    metadataBytes = FSSHTTPBResponseBuilder.BuildEmptyStorageIndexResponse();
                 }
 
                 if (queryAccessCells.Count > 0)

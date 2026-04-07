@@ -791,6 +791,110 @@ namespace MSFSSHTTP.Services
             return ms.ToArray();
         }
 
+        /// <summary>
+        /// Build a minimal FSSHTTPB QueryChanges response containing a single StorageIndex
+        /// data element with only a null-mapped StorageIndexManifestMapping and empty Knowledge.
+        /// Used for partitions that need a structurally valid response with no actual content.
+        /// </summary>
+        public static byte[] BuildEmptyStorageIndexResponse(ulong requestId = 1)
+        {
+            var sessionGuid = Guid.NewGuid();
+            var replicaId = Guid.NewGuid();
+
+            var storageIndexGuid = CreateExGuid32Bit(sessionGuid, 1);
+            var snStorageIndex = new SerialNumber64BitUintValue { Type = 0x80, GUID = sessionGuid, Value = 2 };
+
+            // StorageIndex with a single StorageIndexManifestMapping using null GUID and null serial number
+            var nullManifestGuid = new ExtendedGUIDNullValue { Type = 0x00 };
+            var nullSerialNumber = new SerialNumberNullValue { Type = 0x00 };
+
+            var dataElements = new object[]
+            {
+                new StorageIndexDataElement
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(storageIndexGuid, snStorageIndex, (ulong)DataElementTypes.StorageIndex), 1),
+                    DataElementExtendedGUID = storageIndexGuid,
+                    SerialNumber = snStorageIndex,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
+                        (ulong)DataElementTypes.StorageIndex),
+                    StorageIndexDataElementData = new object[]
+                    {
+                        new StorageIndexManifestMappingValues
+                        {
+                            StorageIndexManifestMapping = FSSHTTPBSerializer
+                                .Create16BitStreamObjectHeaderStart(
+                                    StreamObjectTypeHeaderStart.StorageIndexManifestMapping,
+                                    StorageIndexManifestMappingLength(nullManifestGuid, nullSerialNumber)),
+                            ManifestMappingExtendedGUID = nullManifestGuid,
+                            ManifestMappingSerialNumber = nullSerialNumber
+                        }
+                    },
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement)
+                }
+            };
+
+            var knowledge = BuildEmptyKnowledge();
+
+            var queryChangesResp = new QueryChangesResponse
+            {
+                queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.QueryChangesResponse,
+                    QueryChangesResponseLength(storageIndexGuid), 0),
+                StorageIndexExtendedGUID = storageIndexGuid,
+                P = 0,
+                Reserved = 0,
+                Knowledge = knowledge
+            };
+
+            var subResponse = new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
+                    SubResponseLength(requestId, 2), 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(2),
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = queryChangesResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+
+            var dataElementPackage = new DataElementPackage
+            {
+                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
+                Reserved = 0x00,
+                DataElements = dataElements,
+                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElementPackage)
+            };
+
+            var response = new FsshttpbResponse
+            {
+                ProtocolVersion = 13,
+                MinimumVersion = 11,
+                Signature = 0x9B069439F329CF9D,
+                ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbResponse, 1, 1),
+                Status = 0,
+                Reserved = 0,
+                DataElementPackage = dataElementPackage,
+                SubResponses = new[] { subResponse },
+                ResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Response)
+            };
+
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            response.Serialize(writer);
+            writer.Flush();
+            return ms.ToArray();
+        }
+
         private static ExtendedGUID32BitUintValue CreateExGuid32Bit(Guid guid, uint value)
             => new ExtendedGUID32BitUintValue { Type = 0x80, Value = value, GUID = guid };
 
