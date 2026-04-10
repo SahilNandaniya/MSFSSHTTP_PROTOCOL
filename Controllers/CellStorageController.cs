@@ -33,7 +33,7 @@ namespace MSFSSHTTP.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> ProcessCellStorageRequest()
         {
-            string fileName = "DemoFSSHTTPDocument.docx";  //ATTENTION: Hardcoded for testing purposes
+            string fileName = "BlankDocument.docx";  //ATTENTION: Hardcoded for testing purposes
             var filePath = Path.Combine(_env.WebRootPath, "files", fileName);
 
             var requestId = Guid.NewGuid().ToString();

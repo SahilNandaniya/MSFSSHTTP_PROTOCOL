@@ -680,6 +680,7 @@ namespace MSFSSHTTP.Parsers
         WaterlineKnowledge = 0x29,
         ContentTagKnowledge = 0x2D,
         ContentTagKnowledgeEntry = 0x2E,
+        DataHashHeader = 0x2F,
         QueryChangesVersioning = 0x30,
         Request = 0x040,
         FsshttpbSubResponse = 0x041,

@@ -271,7 +271,7 @@ SubRequestElementGenericType subReq,
             long createTicks = fi.Exists ? fi.CreationTimeUtc.ToFileTimeUtc() : 0;
 
             var etag = fi.Exists
-                ? $"\"{{{GlobalConstant.StableDocumentId.ToString().ToUpper()}}},1\""
+                ? $"\"{{{GlobalConstant.StableDocumentId.ToString().ToUpper()}}},1,irm24A4B01E53DC46C79894148DC0051E64\""
                 : "\"0\"";
 
             // Check if file exists and generate FSSHTTPB binary response
@@ -294,7 +294,7 @@ SubRequestElementGenericType subReq,
                     LastModifiedTime = lastModTicks.ToString(),
                     ModifiedBy = "Sahil Nandaniya",
                     HaveOnlyDemotionChanges = "False",
-                    IsHybridCobalt = "False",
+                    IsHybridCobalt = "True",
                 }
             };
         }

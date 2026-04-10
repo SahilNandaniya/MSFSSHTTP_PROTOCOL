@@ -28,111 +28,426 @@ namespace MSFSSHTTP.Services
         /// Build a full FSSHTTPB binary QueryChanges response for the given file.
         /// Returns the serialized bytes ready to be embedded as XOP binary attachment.
         /// </summary>
-        public static byte[] BuildQueryChangesResponse(byte[] fileBytes, Guid storageGuid)
+        public static byte[] BuildQueryChangesResponse(byte[] fileBytes, Guid storageGuid, ulong requestId = 1)
         {
             // Step 1: Chunk the file (ZIP-based chunking per MS-FSSHTTPD Section 2.4.1)
             var chunks = ChunkFile(fileBytes);
 
-            // Step 2: Assign Extended GUIDs to all data elements
-            uint guidCounter = 1;
-            ulong uniqueSignatureCounter = 1;
-            var storageIndexGuid = NextExGuid(storageGuid, ref guidCounter);
-            var storageManifestGuid = NextExGuid(storageGuid, ref guidCounter);
-            var cellManifestGuid = NextExGuid(storageGuid, ref guidCounter);
-            var revisionManifestGuid = NextExGuid(storageGuid, ref guidCounter);
-            var currentRevisionGuid = NextExGuid(storageGuid, ref guidCounter);
-            var baseRevisionGuid = new ExtendedGUIDNullValue { Type = 0x00 };
+            var sessionGuid = Guid.NewGuid();
+            var replicaId = Guid.NewGuid();
 
-            // Root object GUID (intermediate node referencing all leaf chunks)
-            var rootObjectGuid = NextExGuid(storageGuid, ref guidCounter);
-            var rootObjectGroupGuid = NextExGuid(storageGuid, ref guidCounter);
+            // Step 2: Assign Extended GUIDs to all data elements using CreateExGuid32Bit
+            uint guidValue = 1;
+            var storageIndexGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var storageManifestGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var cellManifestGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var revisionManifestGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var revisionIdGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var rootObjectGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+            var rootObjectGroupGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
 
-            // Serial number for all data elements
-            var serialNumber = new SerialNumber64BitUintValue
+            // Step 3: Separate serial numbers per data element (incrementing values)
+            ulong snVal = 1;
+            var snStorageIndex = new SerialNumber64BitUintValue { Type = 0x80, GUID = sessionGuid, Value = snVal++ };
+            var snRevisionManifest = new SerialNumber64BitUintValue { Type = 0x80, GUID = replicaId, Value = snVal++ };
+            var snStorageManifest = new SerialNumber64BitUintValue { Type = 0x80, GUID = replicaId, Value = snVal++ };
+            var snRootObjectGroup = new SerialNumber64BitUintValue { Type = 0x80, GUID = replicaId, Value = snVal++ };
+            var snCellManifest = new SerialNumber64BitUintValue { Type = 0x80, GUID = replicaId, Value = snVal++ };
+
+            // Well-known Cell ID (same as file contents partition per MS-FSSHTTPD)
+            var cellId = new CellID
             {
-                Type = 0x80,
-                GUID = storageGuid,
-                Value = 1
+                EXGUID1 = new ExtendedGUID5BitUintValue
+                { Type = 0x04, Value = 1, GUID = CellGuid1 },
+                EXGUID2 = new ExtendedGUID5BitUintValue
+                { Type = 0x04, Value = 1, GUID = CellGuid2 }
             };
 
-            // Step 3: Build Data Elements
-            var dataElements = new List<object>();
-
-            // 3a: Storage  
-            var storageIndex = BuildStorageIndex(
-                storageIndexGuid, serialNumber,
-                storageManifestGuid,
-                cellManifestGuid,
-                revisionManifestGuid,
-                currentRevisionGuid);
-            dataElements.Add(storageIndex);
-
-            // 3b: Storage Manifest
-            var storageManifest = BuildStorageManifest(
-                storageManifestGuid, serialNumber, cellManifestGuid);
-            dataElements.Add(storageManifest);
-
-            // 3c: Cell Manifest
-            var cellManifest = BuildCellManifest(
-                cellManifestGuid, serialNumber, currentRevisionGuid);
-            dataElements.Add(cellManifest);
-
-            // 3d: Build chunk object graphs from ZIP analysis
+            // Step 4: Build chunk object groups
             var chunkObjectGroupDataElements = new List<ObjectGroupDataElements>();
             var rootChildObjectGuids = new List<ExtendedGUID>();
+
             foreach (var chunk in chunks)
             {
-                var objectGroupsForChunk = BuildChunkObjectGroups(
-                    storageGuid,
-                    serialNumber,
-                    chunk,
-                    ref guidCounter,
-                    ref uniqueSignatureCounter,
-                    out var topObjectGuidForChunk);
+                var chunkObjectGroupGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+                var chunkLeafObjectGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+                var chunkSnObjGroup = new SerialNumber64BitUintValue { Type = 0x80, GUID = replicaId, Value = snVal++ };
 
-                rootChildObjectGuids.Add(topObjectGuidForChunk);
-                chunkObjectGroupDataElements.AddRange(objectGroupsForChunk);
+                //var chunkLeafNodeBytes = BuildLeafNodeBytesWithDataHash(chunk.Signature, (ulong)chunk.Bytes.Length, chunk.Bytes);
+                var chunkLeafNodeBytes = BuildLeafNodeBytesWithDataHash(chunk.Signature, (ulong)chunk.Bytes.Length, chunk.Bytes);
+
+
+                var chunkDeclarations = new List<object>();
+                var chunkObjectData = new List<object>();
+                var chunkMetadata = new List<ObjectMetadata>();
+
+                ExtendedGUID? chunkDataNodeGuid = null;
+                if (chunk.Bytes.Length <= 1048576)
+                {
+                    chunkDataNodeGuid = CreateExGuid32Bit(sessionGuid, guidValue++);
+
+                    // data node declaration - having 0 reference, as it contains data in reference node
+                    chunkDeclarations.Add(new ObjectDeclaration
+                    {
+                        ObjectGroupObjectDeclaration = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare,
+                                ObjectDeclareLength(chunkDataNodeGuid, 1, (ulong)chunk.Bytes.Length, 0, 0)),
+                        ObjectExtendedGUID = chunkDataNodeGuid,
+                        ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                        ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunk.Bytes.Length),
+                        ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0),
+                        CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0)
+                    });
+
+                    // leaf node declaration - having 1 reference to data node
+                    chunkDeclarations.Add(new ObjectDeclaration
+                    {
+                        ObjectGroupObjectDeclaration = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare,
+                                ObjectDeclareLength(chunkLeafObjectGuid, 1, (ulong)chunkLeafNodeBytes.Length, 1, 0)),
+                        ObjectExtendedGUID = chunkLeafObjectGuid,
+                        ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                        ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunkLeafNodeBytes.Length),
+                        ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(1),
+                        CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0)
+                    });
+
+                    var chunkDataNodeGuidArray = new ExtendedGUIDArray
+                    {
+                        Count = FSSHTTPBSerializer.CreateCompactUint64(1),
+                        Content = new[] { chunkDataNodeGuid }
+                    };
+
+                    // actual data node -  which contains a actual chunk data
+                    chunkObjectData.Add(new ObjectData
+                    {
+                        ObjectGroupObjectDataOrExcludedData = CreateObjectDataHeader(null!, (ulong)chunk.Bytes.Length),
+                        ObjectExtendedGUIDArray = new ExtendedGUIDArray { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                        CellIDArray = new CellIDArray { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                        DataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunk.Bytes.Length),
+                        Data = chunk.Bytes
+                    });
+
+                    // leaf node references the data node, data node contains the actual chunk bytes. Both have ObjectChangeFrequency = 4 (infrequent changes) in metadata - chunkDataNodeGuidArray
+                    chunkObjectData.Add(new ObjectData
+                    {
+                        ObjectGroupObjectDataOrExcludedData = CreateObjectDataHeader(chunkDataNodeGuidArray.Content, (ulong)chunkLeafNodeBytes.Length),
+                        ObjectExtendedGUIDArray = chunkDataNodeGuidArray,
+                        CellIDArray = new CellIDArray { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                        DataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunkLeafNodeBytes.Length),
+                        Data = chunkLeafNodeBytes
+                    });
+
+                    // fixed - object data change frequency for both leaf and data node to 4
+                    chunkMetadata.Add(new ObjectMetadata
+                    {
+                        ObjectGroupMetadata = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadata, 1, 0),
+                        ObjectChangeFrequency = FSSHTTPBSerializer.CreateCompactUint64(4)
+                    });
+                    chunkMetadata.Add(new ObjectMetadata
+                    {
+                        ObjectGroupMetadata = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadata, 1, 0),
+                        ObjectChangeFrequency = FSSHTTPBSerializer.CreateCompactUint64(4)
+                    });
+                }
+                else
+                {
+                    // Large chunk (>1 MB): leaf node contains the data directly, no separate data node
+                    chunkDeclarations.Add(new ObjectDeclaration
+                    {
+                        ObjectGroupObjectDeclaration = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare,
+                                ObjectDeclareLength(chunkLeafObjectGuid, 1, (ulong)chunkLeafNodeBytes.Length, 0, 0)),
+                        ObjectExtendedGUID = chunkLeafObjectGuid,
+                        ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                        ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunkLeafNodeBytes.Length),
+                        ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0),
+                        CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0)
+                    });
+
+                    chunkObjectData.Add(new ObjectData
+                    {
+                        ObjectGroupObjectDataOrExcludedData = CreateObjectDataHeader(null!, (ulong)chunkLeafNodeBytes.Length),
+                        ObjectExtendedGUIDArray = new ExtendedGUIDArray { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                        CellIDArray = new CellIDArray { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                        DataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)chunkLeafNodeBytes.Length),
+                        Data = chunkLeafNodeBytes
+                    });
+
+                    chunkMetadata.Add(new ObjectMetadata
+                    {
+                        ObjectGroupMetadata = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadata, 1, 0),
+                        ObjectChangeFrequency = FSSHTTPBSerializer.CreateCompactUint64(4)
+                    });
+                }
+
+                // chunk declaration, metadata and objectdata are wrapped inside an object group data element representing the chunk, which will be referenced by the root intermediate node
+                var chunkObjGroup = new ObjectGroupDataElements
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(chunkObjectGroupGuid, chunkSnObjGroup, (ulong)DataElementTypes.ObjectGroup), 1),
+                    DataElementExtendedGUID = chunkObjectGroupGuid,
+                    SerialNumber = chunkSnObjGroup,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64((ulong)DataElementTypes.ObjectGroup),
+                    ObjectGroupDeclarationsStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.ObjectGroupDeclarations, 0, 1),
+                    ObjectDeclarationOrObjectDataBLOBDeclaration = chunkDeclarations.ToArray(),
+                    ObjectGroupDeclarationsEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.ObjectGroupDeclarations),
+                    ObjectMetadataDeclaration = new ObjectMetadataDeclaration
+                    {
+                        ObjectGroupMetadataDeclarations = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadataDeclarations, 0, 1),
+                        ObjectMetadata = chunkMetadata.ToArray(),
+                        ObjectGroupMetadataDeclarationsEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(StreamObjectTypeHeaderEnd.ObjectGroupMetadataDeclarations)
+                    },
+                    ObjectGroupDataStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.ObjectGroupData, 0, 1),
+                    ObjectDataOrObjectDataBLOBReference = chunkObjectData.ToArray(),
+                    ObjectGroupDataEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.ObjectGroupData),
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement),
+                };
+
+                rootChildObjectGuids.Add(chunkLeafObjectGuid);
+                chunkObjectGroupDataElements.Add(chunkObjGroup);
             }
 
-            // 3e: Revision Manifest (references root object group + all chunk object groups)
-            var allObjGroupGuids = new List<ExtendedGUID> { rootObjectGroupGuid };
-            allObjGroupGuids.AddRange(chunkObjectGroupDataElements.Select(x => x.DataElementExtendedGUID));
-            var revisionManifest = BuildRevisionManifest(
-                revisionManifestGuid, serialNumber,
-                currentRevisionGuid, baseRevisionGuid,
-                rootObjectGuid, allObjGroupGuids);
-            dataElements.Add(revisionManifest);
+            // Step 5: Build root IntermediateNode bytes - need to investigate for intermediate 
+            ulong totalFileSize = (ulong)fileBytes.LongLength;
+            //byte[] rootSignatureBytes = Sha1(fileBytes);
+            byte[] rootNodeBytes = BuildIntermediateNodeBytes(Array.Empty<byte>(), totalFileSize);
 
-            // 3f: Root Object Group (intermediate node referencing chunk top-level nodes)
-            var rootObjGroup = BuildRootObjectGroup(
-                rootObjectGroupGuid, serialNumber,
-                rootObjectGuid, rootChildObjectGuids, fileBytes);
-            dataElements.Add(rootObjGroup);
-
-            // 3g: Chunk object groups
-            foreach (var og in chunkObjectGroupDataElements)
+            var rootChildGuidArray = new ExtendedGUIDArray
             {
-                dataElements.Add(og);
-            }
-
-            dataElements.Reverse(); // Reverse to ensure manifests come after all referenced object groups
-
-            // Step 4: Build the Data Element Package
-            var dataElementPackage = new DataElementPackage
-            {
-                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
-                Reserved = 0x00,
-                DataElements = dataElements.ToArray(),
-                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.DataElementPackage)
+                Count = FSSHTTPBSerializer.CreateCompactUint64((ulong)rootChildObjectGuids.Count),
+                Content = rootChildObjectGuids.ToArray()
             };
 
-            // Step 5: Build Knowledge (Cell Knowledge + Waterline Knowledge + Content Tag Knowledge)
-            ulong serialVal = 1;
-            var knowledge = BuildKnowledge(storageGuid, serialVal);
+            // Step 6: Build all object group GUIDs for revision manifest references
+            var allObjGroupGuids = new List<ExtendedGUID> { rootObjectGroupGuid };
+            allObjGroupGuids.AddRange(chunkObjectGroupDataElements.Select(x => x.DataElementExtendedGUID));
 
-            // Step 6: Build QueryChanges SubResponse
+            // Build RevisionManifestObjectGroupReferences for each object group
+            var revManifestSubElements = new List<object>();
+            revManifestSubElements.Add(new RevisionManifestRootDeclareValues
+            {
+                RevisionManifestRootDeclare = FSSHTTPBSerializer
+                    .Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.RevisionManifestRootDeclare,
+                        RevisionManifestRootDeclareLength(
+                            new ExtendedGUID5BitUintValue { Type = 0x04, Value = 2, GUID = RootGuid },
+                            rootObjectGuid)),
+                RootExtendedGUID = new ExtendedGUID5BitUintValue
+                { Type = 0x04, Value = 2, GUID = RootGuid },
+                ObjectExtendedGUID = rootObjectGuid // ObjectExtendedGUID of Intermediate Node ( root node )
+            });
+            foreach (var ogGuid in allObjGroupGuids)
+            {
+                revManifestSubElements.Add(new RevisionManifestObjectGroupReferencesValues
+                {
+                    RevisionManifestObjectGroupReferences = FSSHTTPBSerializer
+                        .Create16BitStreamObjectHeaderStart(
+                            StreamObjectTypeHeaderStart.RevisionManifestObjectGroupReferences,
+                            RevisionManifestObjectGroupReferencesLength(ogGuid)),
+                    ObjectGroupExtendedGUID = ogGuid
+                });
+            }
+
+            // Step 7: Build data elements array inline (same order as BuildMinimalPartitionResponse)
+            var dataElements = new object[]
+            {
+                // 1. Root Object Group — IntermediateNode referencing all chunk leaf objects
+                new ObjectGroupDataElements
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(rootObjectGroupGuid, snRootObjectGroup, (ulong)DataElementTypes.ObjectGroup), 1),
+                    DataElementExtendedGUID = rootObjectGroupGuid,
+                    SerialNumber = snRootObjectGroup,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64((ulong)DataElementTypes.ObjectGroup),
+                    ObjectGroupDeclarationsStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.ObjectGroupDeclarations, 0, 1),
+                    ObjectDeclarationOrObjectDataBLOBDeclaration = new object[]
+                    {
+                        new ObjectDeclaration
+                        {
+                            ObjectGroupObjectDeclaration = FSSHTTPBSerializer
+                                .Create16BitStreamObjectHeaderStart(
+                                    StreamObjectTypeHeaderStart.ObjectGroupObjectDeclare,
+                                    ObjectDeclareLength(rootObjectGuid, 1, (ulong)rootNodeBytes.Length, (ulong)rootChildObjectGuids.Count, 0)),
+                            ObjectExtendedGUID = rootObjectGuid,
+                            ObjectPartitionID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                            ObjectDataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)rootNodeBytes.Length),
+                            ObjectReferencesCount = FSSHTTPBSerializer.CreateCompactUint64((ulong)rootChildObjectGuids.Count),
+                            CellReferencesCount = FSSHTTPBSerializer.CreateCompactUint64(0)
+                        }
+                    },
+                    ObjectGroupDeclarationsEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.ObjectGroupDeclarations),
+                    ObjectMetadataDeclaration = new ObjectMetadataDeclaration
+                    {
+                        ObjectGroupMetadataDeclarations = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadataDeclarations, 0, 1),
+                        ObjectMetadata = new ObjectMetadata[]
+                        {
+                            new ObjectMetadata
+                            {
+                                ObjectGroupMetadata = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.ObjectGroupMetadata, 1, 0),
+                                ObjectChangeFrequency = FSSHTTPBSerializer.CreateCompactUint64(3)
+                            }
+                        },
+                        ObjectGroupMetadataDeclarationsEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(StreamObjectTypeHeaderEnd.ObjectGroupMetadataDeclarations)
+                    },
+                    ObjectGroupDataStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.ObjectGroupData, 0, 1),
+                    ObjectDataOrObjectDataBLOBReference = new object[]
+                    {
+                        new ObjectData
+                        {
+                            ObjectGroupObjectDataOrExcludedData = CreateObjectDataHeader(rootChildGuidArray.Content, (ulong)rootNodeBytes.Length),
+                            ObjectExtendedGUIDArray = rootChildGuidArray,
+                            CellIDArray = new CellIDArray
+                                { Count = FSSHTTPBSerializer.CreateCompactUint64(0) },
+                            DataSize = FSSHTTPBSerializer.CreateCompactUint64((ulong)rootNodeBytes.Length),
+                            Data = rootNodeBytes
+                        }
+                    },
+                    ObjectGroupDataEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.ObjectGroupData),
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement)
+                },
+
+                 // 2. Storage Manifest
+                new StorageManifestDataElement
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(storageManifestGuid, snStorageManifest, (ulong)DataElementTypes.StorageManifest), 1),
+                    DataElementExtendedGUID = storageManifestGuid,
+                    SerialNumber = snStorageManifest,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
+                        (ulong)DataElementTypes.StorageManifest),
+                    StorageManifestSchemaGUID = FSSHTTPBSerializer
+                        .Create16BitStreamObjectHeaderStart(
+                            StreamObjectTypeHeaderStart.StorageManifestSchemaGUID, 16),
+                    GUID = StorageManifestSchemaGuid,
+                    StorageManifestRootDeclare = new[]
+                    {
+                        new StorageManifestRootDeclareValues
+                        {
+                            StorageManifestRootDeclare = FSSHTTPBSerializer
+                                .Create16BitStreamObjectHeaderStart(
+                                    StreamObjectTypeHeaderStart.StorageManifestRootDeclare,
+                                    StorageManifestRootDeclareLength(
+                                        new ExtendedGUID5BitUintValue { Type = 0x04, Value = 2, GUID = RootGuid },
+                                        cellId)),
+                            RootExtendedGUID = new ExtendedGUID5BitUintValue
+                                { Type = 0x04, Value = 2, GUID = RootGuid },
+                            CellID = cellId
+                        }
+                    },
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement)
+                },
+
+                 // 3. Revision Manifest
+                new RevisionManifestDataElement
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(revisionManifestGuid, snRevisionManifest, (ulong)DataElementTypes.RevisionManifest), 1),
+                    DataElementExtendedGUID = revisionManifestGuid,
+                    SerialNumber = snRevisionManifest,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
+                        (ulong)DataElementTypes.RevisionManifest),
+                    RevisionManifest = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.RevisionManifest,
+                        RevisionManifestLength(revisionIdGuid, new ExtendedGUIDNullValue { Type = 0x00 }), 1),
+                    RevisionID = revisionIdGuid,
+                    BaseRevisionID = new ExtendedGUIDNullValue { Type = 0x00 },
+                    RevisionManifestDataElementsData = revManifestSubElements.ToArray(),
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement)
+                },
+
+                // 4. Cell Manifest
+                new CellManifestDataElement
+                {
+                    DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.DataElement,
+                        DataElementStartLength(cellManifestGuid, snCellManifest, (ulong)DataElementTypes.CellManifest), 1),
+                    DataElementExtendedGUID = cellManifestGuid,
+                    SerialNumber = snCellManifest,
+                    DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
+                        (ulong)DataElementTypes.CellManifest),
+                    CellManifestCurrentRevision = FSSHTTPBSerializer
+                        .Create16BitStreamObjectHeaderStart(
+                            StreamObjectTypeHeaderStart.CellManifestCurrentRevision,
+                            CellManifestCurrentRevisionLength(revisionIdGuid)),
+                    CellManifestCurrentRevisionExtendedGUID = revisionIdGuid,
+                    DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                        StreamObjectTypeHeaderEnd.DataElement)
+                },
+            };
+
+            // Combine fixed data elements with chunk object groups, then Storage Index at end
+            var allDataElements = new List<object>(dataElements);
+            allDataElements.InsertRange(2, chunkObjectGroupDataElements);
+
+            // 5. Storage Index (last, same pattern as BuildMinimalPartitionResponse)
+            allDataElements.Add(new StorageIndexDataElement
+            {
+                DataElementStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElement,
+                    DataElementStartLength(storageIndexGuid, snStorageIndex, (ulong)DataElementTypes.StorageIndex), 1),
+                DataElementExtendedGUID = storageIndexGuid,
+                SerialNumber = snStorageIndex,
+                DataElementType = FSSHTTPBSerializer.CreateCompactUint64(
+                    (ulong)DataElementTypes.StorageIndex),
+                StorageIndexDataElementData = new object[]
+                {
+                    new StorageIndexCellMappingValues
+                    {
+                        StorageIndexCellMapping = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.StorageIndexCellMapping,
+                                StorageIndexCellMappingLength(cellId, cellManifestGuid, snCellManifest)),
+                        CellID = cellId,
+                        CellMappingExtendedGUID = cellManifestGuid,
+                        CellMappingSerialNumber = snCellManifest
+                    },
+                    new StorageIndexManifestMappingValues
+                    {
+                        StorageIndexManifestMapping = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.StorageIndexManifestMapping,
+                                StorageIndexManifestMappingLength(storageManifestGuid, snStorageManifest)),
+                        ManifestMappingExtendedGUID = storageManifestGuid,
+                        ManifestMappingSerialNumber = snStorageManifest
+                    },
+                    new StorageIndexRevisionMappingValues
+                    {
+                        StorageIndexRevisionMapping = FSSHTTPBSerializer
+                            .Create16BitStreamObjectHeaderStart(
+                                StreamObjectTypeHeaderStart.StorageIndexRevisionMapping,
+                                StorageIndexRevisionMappingLength(revisionIdGuid, revisionManifestGuid, snRevisionManifest)),
+                        RevisionExtendedGUID = revisionIdGuid,
+                        RevisionMappingExtendedGUID = revisionManifestGuid,
+                        RevisionMappingSerialNumber = snRevisionManifest
+                    }
+                },
+                DataElementEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElement)
+            });
+
+            // Step 8: Build Knowledge (empty, same as BuildMinimalPartitionResponse)
+            var knowledge = BuildEmptyKnowledge();
+
             var queryChangesResp = new QueryChangesResponse
             {
                 queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
@@ -144,13 +459,12 @@ namespace MSFSSHTTP.Services
                 Knowledge = knowledge
             };
 
-            // Step 7: Build SubResponse wrapper
             var subResponse = new FsshttpbSubResponse
             {
                 SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.FsshttpbSubResponse,
-                    SubResponseLength(1, 2), 1),
-                RequestID = FSSHTTPBSerializer.CreateCompactUint64(1),
+                    SubResponseLength(requestId, 2), 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
                 RequestType = FSSHTTPBSerializer.CreateCompactUint64(2), // QueryChanges = 0x02
                 Status = 0,
                 Reserved = 0,
@@ -159,7 +473,16 @@ namespace MSFSSHTTP.Services
                     StreamObjectTypeHeaderEnd.SubResponse)
             };
 
-            // Step 8: Build FsshttpbResponse
+            var dataElementPackage = new DataElementPackage
+            {
+                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
+                Reserved = 0x00,
+                DataElements = allDataElements.ToArray(),
+                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElementPackage)
+            };
+
             var response = new FsshttpbResponse
             {
                 ProtocolVersion = 13,
@@ -175,7 +498,6 @@ namespace MSFSSHTTP.Services
                     StreamObjectTypeHeaderEnd.Response)
             };
 
-            // Step 9: Serialize to bytes
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
             response.Serialize(writer);
@@ -352,7 +674,7 @@ namespace MSFSSHTTP.Services
         }
 
 
-        public static byte[] BuildMinimalPartitionResponse(string webRootPath = "", ulong requestId = 1)
+        public static byte[] BuildMinimalPartitionResponse(string webRootPath = "", ulong requestId = 1, string fileName = "EditorsTable.xml")
         {
             var sessionGuid = Guid.NewGuid();
             var replicaId = Guid.NewGuid();
@@ -404,7 +726,7 @@ namespace MSFSSHTTP.Services
 
             // Build a leaf node (empty data) that the root IntermediateNode will reference.
             // Per MS-FSSHTTPD 2.2.3: LeafNodeObject = SignatureObject + DataSizeObject.
-            byte[] leafNodeDataBytes = BuildEditorsTablePayloadFromFile(webRootPath);
+            byte[] leafNodeDataBytes = BuildEditorsTablePayloadFromFile(webRootPath, fileName);
             var leafNodeDataSize = (ulong)leafNodeDataBytes.Length;
 
             byte[] leafNodeSignature;
@@ -1723,6 +2045,48 @@ namespace MSFSSHTTP.Services
             return ms.ToArray();
         }
 
+        private static byte[] BuildLeafNodeBytesWithDataHash(byte[] signature, ulong dataSize, byte[] rawData)
+        {
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+
+            byte[] dataHash = ComputeXorHash0(rawData);
+
+            // Per MS-FSSHTTPB 2.2.1.5.1: non-compound 16-bit header Length = payload bytes.
+            // SignatureObject payload = BinaryItem(CompactUint64 length + content bytes).
+            byte signaturePayloadLength = ComputeBinaryItemSerializedLength(signature);
+            byte dataHashLength = ComputeBinaryItemSerializedLength(dataHash);
+
+            var leaf = new LeafNodeObjectData
+            {
+                LeafNodeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.LeafNodeObject, 0, 1),
+                SignatureHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.SignatureObject, signaturePayloadLength),
+                SignatureData = new BinaryItem
+                {
+                    Length = FSSHTTPBSerializer.CreateCompactUint64((ulong)signature.Length),
+                    Content = signature
+                },
+                DataSizeHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataSizeObject, 8),
+                DataSize = dataSize,
+                LeafNodeDataHashHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(StreamObjectTypeHeaderStart.DataHashHeader,
+                dataHashLength),
+                LeafNodeDataHash = new BinaryItem
+                {
+                    Length = FSSHTTPBSerializer.CreateCompactUint64((ulong)dataHash.Length),
+                    Content = dataHash
+                },
+                LeafNodeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.LeafNodeEnd),
+            };
+
+            leaf.Serialize(writer);
+            writer.Flush();
+            return ms.ToArray();
+        }
+
         private static byte[] BuildIntermediateNodeBytes(byte[] signature, ulong dataSize)
         {
             using var ms = new MemoryStream();
@@ -1740,7 +2104,6 @@ namespace MSFSSHTTP.Services
                 SignatureData = new BinaryItem
                 {
                     Length = FSSHTTPBSerializer.CreateCompactUint64((ulong)signature.Length),
-                    Content = signature
                 },
                 DataSizeHeader = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
                     StreamObjectTypeHeaderStart.DataSizeObject, 8),
@@ -1748,6 +2111,9 @@ namespace MSFSSHTTP.Services
                 IntermediateNodeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
                     StreamObjectTypeHeaderEnd.IntermediateNodeEnd),
             };
+
+            if (signature.Length > 0)
+                node.SignatureData.Content = signature;
 
             node.Serialize(writer);
             writer.Flush();
@@ -2228,6 +2594,45 @@ namespace MSFSSHTTP.Services
             return BuildEditorsTablePayload(xmlString);
         }
 
+        #endregion
+
+        #region Compute XorHash 
+        public static byte[] ComputeXorHash0(byte[] data)
+        {
+            byte[] hash = new byte[20];
+            for (int i = 0; i < data.Length; i++)
+            {
+                byte[] block = new byte[20];
+                block[0] = data[i]; // ✅ extend8: place at low (index 0) end
+                int shift = (i * 11) % 160;
+                byte[] rotated = RotateLeft160(block, shift);
+                for (int j = 0; j < 20; j++)
+                    hash[j] ^= rotated[j];
+            }
+            Array.Reverse(hash);
+            return hash;
+        }
+
+        private static byte[] RotateLeft160(byte[] input, int bits)
+        {
+            byte[] output = new byte[20];
+
+            int byteShift = bits / 8;
+            int bitShift = bits % 8;
+
+            for (int i = 0; i < 20; i++)
+            {
+                int srcIndex1 = (i - byteShift + 20) % 20;
+                int srcIndex2 = (i - byteShift - 1 + 20) % 20;
+
+                byte b1 = input[srcIndex1];
+                byte b2 = input[srcIndex2];
+
+                output[i] = (byte)((b1 << bitShift) | (b2 >> (8 - bitShift)));
+            }
+
+            return output;
+        }
         #endregion
     }
 }
