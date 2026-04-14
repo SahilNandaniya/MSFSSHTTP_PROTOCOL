@@ -43,6 +43,7 @@ namespace MSFSSHTTP.Controllers
 
             // Set multipart/related content type
             Response.ContentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"<http://tempuri.org/0>\"; start-info=\"text/xml\"";
+            Response.Headers["MIME-Version"] = "1.0";
             Response.Headers["Cache-Control"] = "private, max-age=0";
             Response.Headers["Accept-Ranges"] = "bytes";
             Response.Headers["DAV"] = "1,2";
@@ -52,6 +53,8 @@ namespace MSFSSHTTP.Controllers
             Response.Headers["X-MSDAVEXT"] = "1";
             Response.Headers["X-MSFSSHTTP"] = "1.6";
             Response.Headers["X-MS-InvokeApp"] = "1; RequireReadOnly";
+            Response.Headers["X-DataBoundary"] = "NONE";
+            Response.Headers["MicrosoftSharePointTeamServices"] = "16.0.0.27125";
             Response.Headers["X-Content-Type-Options"] = "nosniff";
             Response.Cookies.Append("SPA_RT", ";", new CookieOptions
             {
