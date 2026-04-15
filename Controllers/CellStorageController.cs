@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MSFSSHTTP.Models;
 using MSFSSHTTP.Services;
+using MSFSSHTTP.Utilities;
 using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
@@ -63,8 +64,15 @@ namespace MSFSSHTTP.Controllers
                 SameSite = SameSiteMode.None
             });
 
-            using var reader = new StreamReader(Request.Body);
-            var body = await reader.ReadToEndAsync();
+            Request.EnableBuffering();
+            byte[] bodyBytes;
+            await using (var msBody = new MemoryStream())
+            {
+                await Request.Body.CopyToAsync(msBody);
+                bodyBytes = msBody.ToArray();
+            }
+
+            var body = Encoding.UTF8.GetString(bodyBytes);
 
             int start = body.IndexOf("<s:Envelope", StringComparison.OrdinalIgnoreCase);
             int end = body.IndexOf("</s:Envelope>", StringComparison.OrdinalIgnoreCase);
@@ -76,6 +84,14 @@ namespace MSFSSHTTP.Controllers
 
             string envelopeXml = body.Substring(start, end - start + "</s:Envelope>".Length);
 
+            IReadOnlyDictionary<string, byte[]>? mtomParts = null;
+            if (MtomMultipartParser.TryParseMultipart(Request.ContentType, bodyBytes, out var mtomDict))
+            {
+                mtomParts = mtomDict;
+            }
+
+            var cellFsshttpbByToken = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
             XmlSerializer serializer = new XmlSerializer(typeof(RequestEnvelope));
             using StringReader xmlReader = new StringReader(envelopeXml);
 
@@ -83,10 +99,54 @@ namespace MSFSSHTTP.Controllers
             if (reqObj is not RequestEnvelope req)
                 return BadRequest("Deserialized object is not a valid RequestEnvelope.");
 
+            foreach (var r in req.Body?.RequestCollection?.Request ?? Array.Empty<Request>())
+            {
+                foreach (var sr in r.SubRequest ?? Array.Empty<SubRequestElementGenericType>())
+                {
+                    if (sr.Type != SubRequestAttributeType.Cell)
+                    {
+                        continue;
+                    }
+
+                    if (sr.SubRequestData?.GetFileProps == true)
+                    {
+                        continue;
+                    }
+
+                    if (CellRequestBinaryResolver.TryGetFsshttpbRequestBytes(sr, mtomParts, out var fssBytes)
+                        && fssBytes.Length > 0)
+                    {
+                        cellFsshttpbByToken[sr.SubRequestToken] = fssBytes;
+                    }
+                }
+            }
+
+            var prefix = HttpContext.Items["VtiBinPrefix"] as string ?? string.Empty;
+            var pathForWebUrl = prefix;
+            if (!string.IsNullOrEmpty(pathForWebUrl))
+            {
+                var lastSlash = pathForWebUrl.LastIndexOf('/');
+                if (lastSlash > 0)
+                {
+                    pathForWebUrl = pathForWebUrl[..lastSlash];
+                }
+            }
+
+            if (string.IsNullOrEmpty(pathForWebUrl) || !pathForWebUrl.StartsWith('/'))
+            {
+                pathForWebUrl = "/FSSHTTP/GetDoc";
+            }
+
+            var responseWebUrl = $"{Request.Scheme}://{Request.Host}{pathForWebUrl.TrimEnd('/')}/";
+
             try
             {
                 var service = HttpContext.RequestServices.GetRequiredService<IMSFSSHTTPService>();
-                var (resp, binaryPayload) = await service.CellStorageRequestNew(req, filePath);
+                var (resp, binaryPayload, aggregatedCell) = await service.CellStorageRequestNew(
+                    req,
+                    filePath,
+                    responseWebUrl,
+                    cellFsshttpbByToken);
 
                 // Get all Cell SubRequests and classify by partition
                 var allCellSubRequests = req.Body?.RequestCollection?.Request?
@@ -167,6 +227,15 @@ namespace MSFSSHTTP.Controllers
                         {
                             if (subResponse?.SubResponseData == null)
                             {
+                                continue;
+                            }
+
+                            if (aggregatedCell.TryGetValue(subResponse.SubRequestToken, out var aggBytes)
+                                && aggBytes != null
+                                && aggBytes.Length > 0)
+                            {
+                                subResponse.SubResponseData.Text = new[] { Convert.ToBase64String(aggBytes) };
+                                subResponse.ServerCorrelationId = requestId;
                                 continue;
                             }
 

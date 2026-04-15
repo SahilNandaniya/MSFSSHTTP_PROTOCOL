@@ -514,77 +514,15 @@ namespace MSFSSHTTP.Services
         /// </summary>
         public static byte[] BuildEmptyQueryChangesResponse()
         {
-            // Step 1: Build empty Knowledge (no SpecializedKnowledge elements)
-            var knowledge = new Knowledge
-            {
-                KnowledgeStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.Knowledge, 0, 1),
-                SpecializedKnowledge = new MSFSSHTTP.Parsers.SpecializedKnowledge[0],
-                KnowledgeEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.Knowledge)
-            };
+            return BuildFsshttpbResponseBytes(new[] { CreateEmptyQueryChangesSubResponse(1) });
+        }
 
-            // Step 2: Build QueryChanges Response with null StorageIndexExtendedGUID
-            var nullStorageGuid = new ExtendedGUIDNullValue { Type = 0x00 };
-            var queryChangesResp = new QueryChangesResponse
-            {
-                queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.QueryChangesResponse,
-                    QueryChangesResponseLength(nullStorageGuid), 0),
-                StorageIndexExtendedGUID = nullStorageGuid,
-                P = 0,
-                Reserved = 0,
-                Knowledge = knowledge
-            };
-
-            // Step 3: Build SubResponse wrapper
-            var subResponse = new FsshttpbSubResponse
-            {
-                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
-                    SubResponseLength(1, 2), 1),
-                RequestID = FSSHTTPBSerializer.CreateCompactUint64(1),
-                RequestType = FSSHTTPBSerializer.CreateCompactUint64(2), // QueryChanges = 0x02
-                Status = 0,
-                Reserved = 0,
-                SubResponseData = queryChangesResp,
-                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.SubResponse)
-            };
-
-            // Step 4: Build empty DataElementPackage (no data elements)
-            var dataElementPackage = new DataElementPackage
-            {
-                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
-                Reserved = 0x00,
-                DataElements = new object[0],
-                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.DataElementPackage)
-            };
-
-            // Step 5: Build FsshttpbResponse
-            var response = new FsshttpbResponse
-            {
-                ProtocolVersion = 13,
-                MinimumVersion = 11,
-                Signature = 0x9B069439F329CF9D,
-                ResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.FsshttpbResponse, 1, 1),
-                Status = 0,
-                Reserved = 0,
-                DataElementPackage = dataElementPackage,
-                SubResponses = new[] { subResponse },
-                ResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.Response)
-            };
-
-            // Step 6: Serialize to bytes
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms);
-            response.Serialize(writer);
-            writer.Flush();
-            return ms.ToArray();
+        /// <summary>
+        /// Overload: empty QueryChanges sub-response with explicit FSSHTTPB RequestID (matches client sub-request).
+        /// </summary>
+        public static byte[] BuildEmptyQueryChangesResponse(ulong requestId)
+        {
+            return BuildFsshttpbResponseBytes(new[] { CreateEmptyQueryChangesSubResponse(requestId) });
         }
 
         /// <summary>
@@ -594,64 +532,14 @@ namespace MSFSSHTTP.Services
         /// </summary>
         public static byte[] BuildQueryAccessResponse()
         {
-            // Helper: S_OK ResponseError with HRESULT GUID
-            ResponseError BuildSOKResponseError() => new ResponseError
-            {
-                ErrorStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.ResponseError, 16, compound: 1),
-                ErrorTypeGUID = new Guid("8454c8f2-e401-405a-a198-a10b6991b56e"),
-                ErrorData = new HRESULTError
-                {
-                    ErrorHRESULT = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                        StreamObjectTypeHeaderStart.HRESULTError, 4, compound: 0),
-                    ErrorCode = 0  // S_OK
-                },
-                ErrorEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.Error)
-            };
+            return BuildFsshttpbResponseBytes(new[] { CreateQueryAccessSubResponse(1) });
+        }
 
-            // Step 1: Build QueryAccessResponse (read + write access both granted)
-            var queryAccessResp = new QueryAccessResponse
-            {
-                ReadAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.ReadAccessResponse, 0, compound: 1),
-                ReadAccessResponseError = BuildSOKResponseError(),
-                ReadAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.ReadAccessResponse),
-                WriteAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.WriteAccessResponse, 0, compound: 1),
-                WriteAccessResponseError = BuildSOKResponseError(),
-                WriteAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.WriteAccessResponse)
-            };
-
-            // Step 2: Build SubResponse with RequestType=1 (QueryAccess)
-            var subResponse = new FsshttpbSubResponse
-            {
-                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
-                    SubResponseLength(1, 1), compound: 1),
-                RequestID = FSSHTTPBSerializer.CreateCompactUint64(1),
-                RequestType = FSSHTTPBSerializer.CreateCompactUint64(1), // QueryAccess = 0x01
-                Status = 0,
-                Reserved = 0,
-                SubResponseData = queryAccessResp,
-                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.SubResponse)
-            };
-
-            // Step 3: Build empty DataElementPackage
-            var dataElementPackage = new DataElementPackage
-            {
-                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
-                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
-                Reserved = 0x00,
-                DataElements = new object[0],
-                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
-                    StreamObjectTypeHeaderEnd.DataElementPackage)
-            };
-
-            // Step 4: Build FsshttpbResponse (ProtocolVersion=13 per spec for QueryAccess)
+        /// <summary>
+        /// Serializes a full FSSHTTPB response envelope with an empty data element package and the given sub-responses.
+        /// </summary>
+        public static byte[] BuildFsshttpbResponseBytes(FsshttpbSubResponse[] subResponses)
+        {
             var response = new FsshttpbResponse
             {
                 ProtocolVersion = 13,
@@ -661,13 +549,12 @@ namespace MSFSSHTTP.Services
                     StreamObjectTypeHeaderStart.FsshttpbResponse, 1, 1),
                 Status = 0,
                 Reserved = 0,
-                DataElementPackage = dataElementPackage,
-                SubResponses = new[] { subResponse },
+                DataElementPackage = CreateEmptyDataElementPackage(),
+                SubResponses = subResponses,
                 ResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
                     StreamObjectTypeHeaderEnd.Response)
             };
 
-            // Step 5: Serialize to bytes
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
             response.Serialize(writer);
@@ -675,6 +562,202 @@ namespace MSFSSHTTP.Services
             return ms.ToArray();
         }
 
+        private static DataElementPackage CreateEmptyDataElementPackage()
+        {
+            return new DataElementPackage
+            {
+                DataElementPackageStart = FSSHTTPBSerializer.Create16BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.DataElementPackage, 1, 1),
+                Reserved = 0x00,
+                DataElements = Array.Empty<object>(),
+                DataElementPackageEnd = FSSHTTPBSerializer.Create8BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.DataElementPackage)
+            };
+        }
+
+        /// <summary>
+        /// QueryAccess (0x01) sub-response for aggregated Cell FSSHTTPB replies.
+        /// </summary>
+        public static FsshttpbSubResponse CreateQueryAccessSubResponse(ulong requestId)
+        {
+            var queryAccessResp = new QueryAccessResponse
+            {
+                ReadAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.ReadAccessResponse, 0, compound: 1),
+                ReadAccessResponseError = CreateSokHresultResponseError(),
+                ReadAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.ReadAccessResponse),
+                WriteAccessResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.WriteAccessResponse, 0, compound: 1),
+                WriteAccessResponseError = CreateSokHresultResponseError(),
+                WriteAccessResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.WriteAccessResponse)
+            };
+
+            return new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
+                    SubResponseLength(requestId, 1), compound: 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(1),
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = queryAccessResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+        }
+
+        /// <summary>
+        /// Empty QueryChanges (0x02) sub-response (ack-only).
+        /// </summary>
+        public static FsshttpbSubResponse CreateEmptyQueryChangesSubResponse(ulong requestId)
+        {
+            var nullStorageGuid = new ExtendedGUIDNullValue { Type = 0x00 };
+            var queryChangesResp = new QueryChangesResponse
+            {
+                queryChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.QueryChangesResponse,
+                    QueryChangesResponseLength(nullStorageGuid), 0),
+                StorageIndexExtendedGUID = nullStorageGuid,
+                P = 0,
+                Reserved = 0,
+                Knowledge = BuildEmptyKnowledge()
+            };
+
+            return new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
+                    SubResponseLength(requestId, 2), 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(2),
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = queryChangesResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+        }
+
+        /// <summary>
+        /// PutChanges (0x05) acknowledge sub-response. Does not merge request data elements (ack-only).
+        /// Applied storage index uses the client's expected index from the request.
+        /// </summary>
+        public static FsshttpbSubResponse CreatePutChangesSubResponse(ulong requestId, PutChangesRequest putReq)
+        {
+            var applied = putReq.ExpectedStorageIndexExtendedGUID ?? putReq.StorageIndexExtendedGUID;
+            var dataElementsAdded = new ExtendedGUIDArray
+            {
+                Count = FSSHTTPBSerializer.CreateCompactUint64(0),
+                Content = null
+            };
+
+            var immediateLen = MeasurePutChangesResponsePayloadLength(applied, dataElementsAdded);
+            var resultantKnowledge = putReq.ClientKnowledge ?? BuildEmptyKnowledge();
+
+            var putResp = new PutChangesResponse
+            {
+                putChangesResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.PutChangesResponse,
+                    immediateLen,
+                    0),
+                AppliedStorageIndexId = applied,
+                DataElementsAdded = dataElementsAdded,
+                ResultantKnowledge = resultantKnowledge,
+                DiagnosticRequestOptionOutput = null
+            };
+
+            return new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
+                    SubResponseLength(requestId, 5), 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(5),
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = putResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+        }
+
+        /// <summary>
+        /// AllocateExtendedGUIDRange (0x0B) sub-response with a newly allocated GUID component and integer range.
+        /// </summary>
+        public static FsshttpbSubResponse CreateAllocateExtendedGuidRangeSubResponse(
+            ulong requestId,
+            AllocateExtendedGUIDRangeRequest? allocateReq)
+        {
+            var guidComponent = Guid.NewGuid();
+            const ulong rangeMin = 1;
+            const ulong rangeMax = 0x10000;
+
+            var payloadLen = MeasureAllocateExtendedGuidRangePayloadLength(guidComponent, rangeMin, rangeMax);
+            var allocResp = new AllocateExtendedGUIDRange
+            {
+                AllocateExtendedGUIDRangeResponse = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.AllocateExtendedGUIDRangeResponse,
+                    payloadLen,
+                    0),
+                GUIDComponent = guidComponent,
+                IntegerRangeMin = FSSHTTPBSerializer.CreateCompactUint64(rangeMin),
+                IntegerRangeMax = FSSHTTPBSerializer.CreateCompactUint64(rangeMax)
+            };
+
+            return new FsshttpbSubResponse
+            {
+                SubResponseStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.FsshttpbSubResponse,
+                    SubResponseLength(requestId, 0x0B), 1),
+                RequestID = FSSHTTPBSerializer.CreateCompactUint64(requestId),
+                RequestType = FSSHTTPBSerializer.CreateCompactUint64(0x0B),
+                Status = 0,
+                Reserved = 0,
+                SubResponseData = allocResp,
+                SubResponseEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.SubResponse)
+            };
+        }
+
+        private static ResponseError CreateSokHresultResponseError()
+        {
+            return new ResponseError
+            {
+                ErrorStart = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                    StreamObjectTypeHeaderStart.ResponseError, 16, compound: 1),
+                ErrorTypeGUID = new Guid("8454c8f2-e401-405a-a198-a10b6991b56e"),
+                ErrorData = new HRESULTError
+                {
+                    ErrorHRESULT = FSSHTTPBSerializer.Create32BitStreamObjectHeaderStart(
+                        StreamObjectTypeHeaderStart.HRESULTError, 4, compound: 0),
+                    ErrorCode = 0
+                },
+                ErrorEnd = FSSHTTPBSerializer.Create16BitStreamObjectHeaderEnd(
+                    StreamObjectTypeHeaderEnd.Error)
+            };
+        }
+
+        private static short MeasurePutChangesResponsePayloadLength(ExtendedGUID applied, ExtendedGUIDArray dataElementsAdded)
+        {
+            using var ms = new MemoryStream();
+            using var w = new BinaryWriter(ms);
+            applied.Serialize(w);
+            dataElementsAdded.Serialize(w);
+            return (short)ms.Length;
+        }
+
+        private static short MeasureAllocateExtendedGuidRangePayloadLength(Guid guidComponent, ulong min, ulong max)
+        {
+            using var ms = new MemoryStream();
+            using var w = new BinaryWriter(ms);
+            w.Write(guidComponent.ToByteArray());
+            FSSHTTPBSerializer.CreateCompactUint64(min).Serialize(w);
+            FSSHTTPBSerializer.CreateCompactUint64(max).Serialize(w);
+            return (short)ms.Length;
+        }
 
         public static byte[] BuildMinimalPartitionResponse(string webRootPath = "", ulong requestId = 1, string fileName = "EditorsTable.xml")
         {

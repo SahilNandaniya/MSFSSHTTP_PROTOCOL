@@ -11,4 +11,11 @@
 	<PackageReference Include="SoapCore" Version="1.2.1.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="MSFSSHTTP.Tests/**" />
+    <Content Remove="MSFSSHTTP.Tests/**" />
+    <EmbeddedResource Remove="MSFSSHTTP.Tests/**" />
+    <None Remove="MSFSSHTTP.Tests/**" />
+  </ItemGroup>
+
 </Project>

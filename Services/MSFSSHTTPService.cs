@@ -14,14 +14,28 @@ namespace MSFSSHTTP.Services
         /// </summary>
         private byte[] _binaryPayload;
 
-        public Task<(ResponseEnvelope Envelope, byte[] BinaryPayload)> CellStorageRequestNew(RequestEnvelope request, string filePath)
+        private IReadOnlyDictionary<string, byte[]> _cellFsshttpbRequestBytesByToken =
+            new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+        private readonly Dictionary<string, byte[]> _aggregatedCellFsshttpbByToken =
+            new(StringComparer.Ordinal);
+
+        public Task<(ResponseEnvelope Envelope, byte[]? BinaryPayload, IReadOnlyDictionary<string, byte[]> AggregatedCellFsshttpbBySubRequestToken)> CellStorageRequestNew(
+            RequestEnvelope request,
+            string filePath,
+            string responseWebUrl,
+            IReadOnlyDictionary<string, byte[]>? cellFsshttpbRequestBytesBySubRequestToken)
         {
             _binaryPayload = null;
+            _aggregatedCellFsshttpbByToken.Clear();
+            _cellFsshttpbRequestBytesByToken = cellFsshttpbRequestBytesBySubRequestToken
+                ?? new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
             var requestCollection = request.Body?.RequestCollection;
             if (requestCollection?.Request == null || requestCollection.Request.Length == 0)
             {
-                return Task.FromResult((BuildErrorResponse("No requests in collection."), (byte[])null));
+                return Task.FromResult((BuildErrorResponse("No requests in collection."), (byte[]?)null,
+                    (IReadOnlyDictionary<string, byte[]>)new Dictionary<string, byte[]>(StringComparer.Ordinal)));
             }
 
             var responses = new List<Response>();
@@ -68,15 +82,14 @@ namespace MSFSSHTTP.Services
                     },
                     ResponseCollection = new ResponseCollection
                     {
-                        //WebUrl = requestCollection.Request[0]?.Url ?? "",
-                        WebUrl = "https://pnq1-lhp-n91356/FSSHTTP/GetDoc/",
+                        WebUrl = responseWebUrl,
                         WebUrlIsEncoded = "False",
                         Response = responses.ToArray()
                     }
                 }
             };
 
-            return Task.FromResult((envelope, _binaryPayload));
+            return Task.FromResult((envelope, _binaryPayload, (IReadOnlyDictionary<string, byte[]>)_aggregatedCellFsshttpbByToken));
         }
 
         private SubResponseElementGenericType ProcessSubRequest(SubRequestElementGenericType subReq, string filePath)
@@ -301,6 +314,21 @@ SubRequestElementGenericType subReq,
 
         private SubResponseElementGenericType BuildCellResponse(SubRequestElementGenericType subReq, string filePath)
         {
+            if (_cellFsshttpbRequestBytesByToken.TryGetValue(subReq.SubRequestToken, out var incomingBytes)
+                && incomingBytes != null
+                && incomingBytes.Length > 0)
+            {
+                try
+                {
+                    var aggregated = CellFsshttpbDispatcher.BuildAggregatedResponse(incomingBytes);
+                    _aggregatedCellFsshttpbByToken[subReq.SubRequestToken] = aggregated;
+                }
+                catch
+                {
+                    // Leave SOAP success; client may fall back if binary is invalid.
+                }
+            }
+
             return new SubResponseElementGenericType
             {
                 SubRequestToken = subReq.SubRequestToken,
