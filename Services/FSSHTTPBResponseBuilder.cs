@@ -217,10 +217,11 @@ namespace MSFSSHTTP.Services
                 chunkObjectGroupDataElements.Add(chunkObjGroup);
             }
 
-            // Step 5: Build root IntermediateNode bytes - need to investigate for intermediate 
+            // Step 5: Build root IntermediateNode bytes
+            // Per MS-FSSHTTPD 2.2.2.1: Root intermediate node signature = SHA-1 of entire file
             ulong totalFileSize = (ulong)fileBytes.LongLength;
-            //byte[] rootSignatureBytes = Sha1(fileBytes);
-            byte[] rootNodeBytes = BuildIntermediateNodeBytes(Array.Empty<byte>(), totalFileSize);
+            byte[] rootSignatureBytes = Sha1(fileBytes);
+            byte[] rootNodeBytes = BuildIntermediateNodeBytes(rootSignatureBytes, totalFileSize);
 
             var rootChildGuidArray = new ExtendedGUIDArray
             {
@@ -395,9 +396,9 @@ namespace MSFSSHTTP.Services
                 },
             };
 
-            // Combine fixed data elements with chunk object groups, then Storage Index at end
+            // Combine: Root ObjectGroup, then chunk ObjectGroups, then manifests, then Storage Index
             var allDataElements = new List<object>(dataElements);
-            allDataElements.InsertRange(2, chunkObjectGroupDataElements);
+            allDataElements.InsertRange(1, chunkObjectGroupDataElements);
 
             // 5. Storage Index (last, same pattern as BuildMinimalPartitionResponse)
             allDataElements.Add(new StorageIndexDataElement
@@ -445,8 +446,9 @@ namespace MSFSSHTTP.Services
                     StreamObjectTypeHeaderEnd.DataElement)
             });
 
-            // Step 8: Build Knowledge (empty, same as BuildMinimalPartitionResponse)
-            var knowledge = BuildEmptyKnowledge();
+            // Step 8: Build Knowledge with proper CellKnowledge, WaterlineKnowledge, ContentTagKnowledge
+            // The serial value covers all data element serial numbers assigned using replicaId
+            var knowledge = BuildKnowledge(replicaId, snVal - 1);
 
             var queryChangesResp = new QueryChangesResponse
             {
