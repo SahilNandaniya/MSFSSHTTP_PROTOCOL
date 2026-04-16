@@ -2490,7 +2490,7 @@ namespace MSFSSHTTP.Services
         /// </summary>
         private static short QueryChangesResponseLength(ExtendedGUID storageIndexGuid)
         {
-            return (short)(ExGuidSize(storageIndexGuid) + 2);
+            return (short)(ExGuidSize(storageIndexGuid) + 1);
         }
 
         /// <summary>

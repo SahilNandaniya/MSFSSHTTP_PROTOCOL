@@ -1,5 +1,6 @@
 //using FSSHTTPandWOPIInspector.Parsers;
 using MSFSSHTTP.Models;
+using MSFSSHTTP.Parsers;
 using MSFSSHTTP.Utilities;
 
 namespace MSFSSHTTP.Services
@@ -261,6 +262,39 @@ namespace MSFSSHTTP.Services
             };
         }
 
+        /// <summary>
+        /// Reads the Cell sub-request FSSHTTPB package (base64 in Text) and returns the RequestID
+        /// of the QueryChanges sub-request (0x02). Word matches SubResponse RequestID to the request;
+        /// a mismatch causes the client to reject the binary payload.
+        /// </summary>
+        private static ulong TryGetQueryChangesRequestId(SubRequestElementGenericType subReq)
+        {
+            try
+            {
+                var textArr = subReq.SubRequestData?.Text;
+                if (textArr == null || textArr.Length == 0 || string.IsNullOrEmpty(textArr[0]))
+                    return 1;
+
+                var bytes = Convert.FromBase64String(textArr[0]);
+                var fssReq = new FsshttpbRequest();
+                fssReq.Parse(new MemoryStream(bytes));
+                if (fssReq.SubRequest == null)
+                    return 1;
+
+                foreach (var sreq in fssReq.SubRequest)
+                {
+                    if (sreq.RequestType.GetUint(sreq.RequestType) == 0x02)
+                        return sreq.RequestID.GetUint(sreq.RequestID);
+                }
+            }
+            catch
+            {
+                // Ignore parse errors; use default RequestID.
+            }
+
+            return 1;
+        }
+
         private SubResponseElementGenericType BuildCellFilePropsResponse(
 SubRequestElementGenericType subReq,
     string filePath)
@@ -279,7 +313,8 @@ SubRequestElementGenericType subReq,
             {
                 var fileBytes = System.IO.File.ReadAllBytes(filePath);
                 var storageGuid = Guid.NewGuid();
-                _binaryPayload = FSSHTTPBResponseBuilder.BuildQueryChangesResponse(fileBytes, storageGuid);
+                ulong requestID = TryGetQueryChangesRequestId(subReq);
+                _binaryPayload = FSSHTTPBResponseBuilder.BuildQueryChangesResponse(fileBytes, storageGuid, requestID);
             }
 
             return new SubResponseElementGenericType
