@@ -1,5 +1,6 @@
 using MSFSSHTTP.Middleware;
 using MSFSSHTTP.Services;
+using MSFSSHTTP.Services.SubRequestHandlers;
 using SoapCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +8,21 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSoapCore();
 builder.Services.AddControllersWithViews();
-builder.Services.AddSingleton<IMSFSSHTTPService, MSFSSHTTPService>();
+
+// Register sub-request handlers
+builder.Services.AddSingleton<ISubRequestHandler, CellSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, CoauthSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, ExclusiveLockSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, ServerTimeSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, WhoAmISubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, GetDocMetaInfoSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, EditorsTableSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, SchemaLockSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, GetVersionsSubRequestHandler>();
+builder.Services.AddSingleton<ISubRequestHandler, LabelSubRequestHandler>();
+
+// Register the orchestrator service (transient - each request gets fresh state)
+builder.Services.AddTransient<IMSFSSHTTPService, MSFSSHTTPService>();
 
 var app = builder.Build();
 

@@ -1033,6 +1033,18 @@
     }
 
     /// <summary>
+    /// Error codes for errors that occur during subrequest dependency checks. Defined in 2.2.5.2
+    /// </summary>
+    public enum DependencyCheckRelatedErrorCodeTypes
+    {
+        DependentRequestNotExecuted,
+        DependentOnlyOnSuccessRequestFailed,
+        DependentOnlyOnFailRequestSucceeded,
+        DependentOnlyOnNotSupportedRequestGetSupported,
+        InvalidRequestDependencyType
+    }
+
+    /// <summary>
     /// Represent the type of dependency that a cell storage service subrequest has on another cell storage service subrequest. Defined in 2.2.5.3
     /// </summary>
     public enum DependencyTypes
